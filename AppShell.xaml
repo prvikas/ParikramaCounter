@@ -1,0 +1,22 @@
+<Shell xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+       xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+       xmlns:local="clr-namespace:ParikramaCounter.Views"
+       x:Class="ParikramaCounter.AppShell"
+       Shell.FlyoutBehavior="Disabled">
+
+    <TabBar>
+        <ShellContent Title="Tracking" 
+                      Icon="home.png"
+                      ContentTemplate="{DataTemplate local:TrackingPage}" />
+
+        <ShellContent Title="Diagnostics" 
+                      Icon="chart.png"
+                      ContentTemplate="{DataTemplate local:DiagnosticsPage}" />
+
+        <ShellContent Title="Settings" 
+                      Icon="settings.png"
+                      ContentTemplate="{DataTemplate local:SettingsPage}" />
+    </TabBar>
+
+</Shell>
+

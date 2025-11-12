@@ -1,0 +1,75 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+             x:Class="ParikramaCounter.Views.SettingsPage"
+             Title="Settings"
+             BackgroundColor="#0f172a">
+
+    <ScrollView>
+        <VerticalStackLayout Padding="20" Spacing="25">
+
+            <Label Text="Settings and Calibration" FontSize="24" FontAttributes="Bold" TextColor="White" HorizontalOptions="Center"/>
+
+            <!-- Magnetometer Calibration -->
+            <Frame BackgroundColor="#1e293b" BorderColor="#3b82f6" CornerRadius="15" Padding="20">
+                <VerticalStackLayout Spacing="15">
+                    <Label Text="Magnetometer Calibration" FontSize="18" FontAttributes="Bold" TextColor="#3b82f6"/>
+                    <Label Text="Move your device in a figure-8 pattern to calibrate the compass for accurate heading detection." 
+                           TextColor="#94a3b8" FontSize="14"/>
+
+                    <ProgressBar Progress="{Binding CalibrationProgress}" 
+                                 ProgressColor="#3b82f6" 
+                                 IsVisible="{Binding IsCalibrating}"
+                                 HeightRequest="10"/>
+
+                    <Button Text="Start Calibration" 
+                            Command="{Binding StartCalibrationCommand}"
+                            BackgroundColor="#3b82f6" 
+                            TextColor="White"
+                            CornerRadius="10"
+                            IsEnabled="{Binding IsCalibrating, Converter={StaticResource InverseBoolConverter}}"/>
+                </VerticalStackLayout>
+            </Frame>
+
+            <!-- Step Detection Settings -->
+            <Frame BackgroundColor="#1e293b" BorderColor="#3b82f6" CornerRadius="15" Padding="20">
+                <VerticalStackLayout Spacing="15">
+                    <Label Text="Step Detection Tuning" FontSize="18" FontAttributes="Bold" TextColor="#3b82f6"/>
+
+                    <Label Text="{Binding StepThreshold, StringFormat='Threshold: {0}%'}" TextColor="White"/>
+                    <Slider Minimum="50" Maximum="200" Value="{Binding StepThreshold}" 
+                            ThumbColor="#3b82f6" MinimumTrackColor="#3b82f6"/>
+
+                    <Label Text="{Binding MinStepInterval, StringFormat='Min Interval: {0}ms'}" TextColor="White"/>
+                    <Slider Minimum="150" Maximum="500" Value="{Binding MinStepInterval}" 
+                            ThumbColor="#3b82f6" MinimumTrackColor="#3b82f6"/>
+                </VerticalStackLayout>
+            </Frame>
+
+            <!-- Algorithm Documentation -->
+            <Frame BackgroundColor="#1e293b" BorderColor="#3b82f6" CornerRadius="15" Padding="20">
+                <VerticalStackLayout Spacing="10">
+                    <Label Text="Algorithm Info" FontSize="18" FontAttributes="Bold" TextColor="#3b82f6"/>
+                    <Label TextColor="#94a3b8" FontSize="13">
+                        <Label.FormattedText>
+                            <FormattedString>
+                                <Span Text="• Kalman Filter: Process noise 0.001, Measurement noise 0.5" />
+                                <Span Text="&#10;• Complementary Filter: α=0.8 (High-pass), α=0.1 (Low-pass)" />
+                                <Span Text="&#10;• Dynamic threshold with 50-sample history window" />
+                                <Span Text="&#10;• Tilt-compensated 3D compass" />
+                            </FormattedString>
+                        </Label.FormattedText>
+                    </Label>
+                </VerticalStackLayout>
+            </Frame>
+
+            <!-- Reset Button -->
+            <Button Text="Reset to Defaults" 
+                    Command="{Binding ResetSettingsCommand}"
+                    BackgroundColor="#ef4444" 
+                    TextColor="White"
+                    CornerRadius="10"/>
+
+        </VerticalStackLayout>
+    </ScrollView>
+</ContentPage>

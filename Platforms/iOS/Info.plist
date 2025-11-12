@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <!-- ... other keys ... -->
+    
+    <!-- Motion & Fitness -->
+    <key>NSMotionUsageDescription</key>
+    <string>We need access to motion sensors to count your steps and detect direction during Parikrama.</string>
+    
+    <!-- Pedometer -->
+    <key>NSMotionUsageDescription</key>
+    <string>We need access to your step data to accurately count circumambulations.</string>
+    
+    <!-- Location (if using GPS for additional accuracy) -->
+    <key>NSLocationWhenInUseUsageDescription</key>
+    <string>We need your location to improve compass accuracy during outdoor Parikrama.</string>
+    
+    <key>NSLocationAlwaysUsageDescription</key>
+    <string>We need your location to track Parikrama even when the app is in the background.</string>
+    
+    <!-- Background Modes (optional for continuous tracking) -->
+    <key>UIBackgroundModes</key>
+    <array>
+        <string>location</string>
+        <string>processing</string>
+    </array>
+</dict>
+</plist>

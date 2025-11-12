@@ -1,0 +1,87 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+             x:Class="ParikramaCounter.Views.DiagnosticsPage"
+             Title="Diagnostics"
+             BackgroundColor="#0f172a">
+
+    <ScrollView>
+        <VerticalStackLayout Padding="20" Spacing="20">
+
+            <Label Text="Real-Time Sensor Data" FontSize="24" FontAttributes="Bold" TextColor="White" HorizontalOptions="Center"/>
+            <Label Text="{Binding Timestamp}" FontSize="12" TextColor="#94a3b8" HorizontalOptions="Center"/>
+
+            <!-- Accelerometer -->
+            <Frame BackgroundColor="#1e293b" BorderColor="#3b82f6" CornerRadius="15" Padding="20">
+                <VerticalStackLayout Spacing="8">
+                    <Label Text="Accelerometer (m/s²)" FontSize="18" FontAttributes="Bold" TextColor="#3b82f6"/>
+                    <Grid ColumnDefinitions="*,*" RowDefinitions="Auto,Auto,Auto" ColumnSpacing="10" RowSpacing="5">
+                        <Label Text="X:" TextColor="#94a3b8" Grid.Row="0" Grid.Column="0"/>
+                        <Label Text="{Binding AccelX}" TextColor="White" Grid.Row="0" Grid.Column="1"/>
+                        <Label Text="Y:" TextColor="#94a3b8" Grid.Row="1" Grid.Column="0"/>
+                        <Label Text="{Binding AccelY}" TextColor="White" Grid.Row="1" Grid.Column="1"/>
+                        <Label Text="Z:" TextColor="#94a3b8" Grid.Row="2" Grid.Column="0"/>
+                        <Label Text="{Binding AccelZ}" TextColor="White" Grid.Row="2" Grid.Column="1"/>
+                    </Grid>
+                </VerticalStackLayout>
+            </Frame>
+
+            <!-- Gyroscope -->
+            <Frame BackgroundColor="#1e293b" BorderColor="#3b82f6" CornerRadius="15" Padding="20">
+                <VerticalStackLayout Spacing="8">
+                    <Label Text="Gyroscope (rad/s)" FontSize="18" FontAttributes="Bold" TextColor="#3b82f6"/>
+                    <Grid ColumnDefinitions="*,*" RowDefinitions="Auto,Auto,Auto" ColumnSpacing="10" RowSpacing="5">
+                        <Label Text="X:" TextColor="#94a3b8" Grid.Row="0" Grid.Column="0"/>
+                        <Label Text="{Binding GyroX}" TextColor="White" Grid.Row="0" Grid.Column="1"/>
+                        <Label Text="Y:" TextColor="#94a3b8" Grid.Row="1" Grid.Column="0"/>
+                        <Label Text="{Binding GyroY}" TextColor="White" Grid.Row="1" Grid.Column="1"/>
+                        <Label Text="Z:" TextColor="#94a3b8" Grid.Row="2" Grid.Column="0"/>
+                        <Label Text="{Binding GyroZ}" TextColor="White" Grid.Row="2" Grid.Column="1"/>
+                    </Grid>
+                </VerticalStackLayout>
+            </Frame>
+
+            <!-- Magnetometer -->
+            <Frame BackgroundColor="#1e293b" BorderColor="#3b82f6" CornerRadius="15" Padding="20">
+                <VerticalStackLayout Spacing="8">
+                    <Label Text="Magnetometer (µT)" FontSize="18" FontAttributes="Bold" TextColor="#3b82f6"/>
+                    <Grid ColumnDefinitions="*,*" RowDefinitions="Auto,Auto,Auto" ColumnSpacing="10" RowSpacing="5">
+                        <Label Text="X:" TextColor="#94a3b8" Grid.Row="0" Grid.Column="0"/>
+                        <Label Text="{Binding MagX}" TextColor="White" Grid.Row="0" Grid.Column="1"/>
+                        <Label Text="Y:" TextColor="#94a3b8" Grid.Row="1" Grid.Column="0"/>
+                        <Label Text="{Binding MagY}" TextColor="White" Grid.Row="1" Grid.Column="1"/>
+                        <Label Text="Z:" TextColor="#94a3b8" Grid.Row="2" Grid.Column="0"/>
+                        <Label Text="{Binding MagZ}" TextColor="White" Grid.Row="2" Grid.Column="1"/>
+                    </Grid>
+                </VerticalStackLayout>
+            </Frame>
+
+            <!-- Heading -->
+            <Frame BackgroundColor="#1e293b" BorderColor="#3b82f6" CornerRadius="15" Padding="20">
+                <VerticalStackLayout Spacing="8">
+                    <Label Text="Heading (degrees)" FontSize="18" FontAttributes="Bold" TextColor="#3b82f6"/>
+                    <Grid ColumnDefinitions="*,*" RowDefinitions="Auto,Auto" ColumnSpacing="10" RowSpacing="5">
+                        <Label Text="Magnetic:" TextColor="#94a3b8" Grid.Row="0" Grid.Column="0"/>
+                        <Label Text="{Binding Heading}" TextColor="White" Grid.Row="0" Grid.Column="1"/>
+                        <Label Text="True:" TextColor="#94a3b8" Grid.Row="1" Grid.Column="0"/>
+                        <Label Text="{Binding TrueHeading}" TextColor="White" Grid.Row="1" Grid.Column="1"/>
+                    </Grid>
+                </VerticalStackLayout>
+            </Frame>
+
+            <!-- Step Detection Metrics -->
+            <Frame BackgroundColor="#1e293b" BorderColor="#3b82f6" CornerRadius="15" Padding="20">
+                <VerticalStackLayout Spacing="8">
+                    <Label Text="Step Detection" FontSize="18" FontAttributes="Bold" TextColor="#3b82f6"/>
+                    <Grid ColumnDefinitions="*,*" RowDefinitions="Auto,Auto" ColumnSpacing="10" RowSpacing="5">
+                        <Label Text="Accel Magnitude:" TextColor="#94a3b8" Grid.Row="0" Grid.Column="0"/>
+                        <Label Text="{Binding AccelMagnitude}" TextColor="White" Grid.Row="0" Grid.Column="1"/>
+                        <Label Text="Threshold:" TextColor="#94a3b8" Grid.Row="1" Grid.Column="0"/>
+                        <Label Text="{Binding CurrentThreshold}" TextColor="White" Grid.Row="1" Grid.Column="1"/>
+                    </Grid>
+                </VerticalStackLayout>
+            </Frame>
+
+        </VerticalStackLayout>
+    </ScrollView>
+</ContentPage>
