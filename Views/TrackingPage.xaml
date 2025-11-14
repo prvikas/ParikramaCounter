@@ -1,4 +1,19 @@
 <?xml version="1.0" encoding="utf-8" ?>
+<!--
+PSEUDOCODE / PLAN (detailed):
+1. Identify XAML 'Border' elements that use invalid properties:
+   - 'BorderColor' -> not a property on MAUI Border.
+   - 'CornerRadius' -> not a property on MAUI Border.
+2. Replace unsupported properties with MAUI Border equivalents:
+   - Replace 'BorderColor="#xxxxxx"' with 'Stroke="#xxxxxx"'.
+   - Replace 'CornerRadius="N"' with 'StrokeShape="RoundRectangle N,N,N,N"'.
+   - For previously used 'StrokeShape' usages, keep existing format.
+3. Keep other bindings and layout intact to avoid introducing new errors.
+4. Do not remove or modify other valid attributes (BackgroundColor, Padding, etc.).
+5. Output updated XAML for the same file path.
+
+Now follows the corrected XAML file with Border property fixes.
+-->
 <ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
              xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
              x:Class="ParikramaCounter.Views.TrackingPage"
@@ -7,11 +22,10 @@
     <ScrollView>
         <VerticalStackLayout Padding="20" Spacing="20">
 
-            <!-- Header -->
             <Label Text="Parikrama Counter" FontSize="28" FontAttributes="Bold" TextColor="White" HorizontalOptions="Center"/>
 
             <!-- Target Setting -->
-            <Frame BackgroundColor="#1e293b" BorderColor="#8b5cf6" CornerRadius="15" Padding="20">
+            <Border BackgroundColor="#1e293b" Stroke="#8b5cf6" StrokeShape="RoundRectangle 15,15,15,15" Padding="20">
                 <VerticalStackLayout Spacing="10">
                     <Label Text="Target Parikramas" FontSize="16" HorizontalOptions="Center" TextColor="#94a3b8"/>
                     <HorizontalStackLayout HorizontalOptions="Center" Spacing="20">
@@ -25,10 +39,10 @@
                                 WidthRequest="50" HeightRequest="50" CornerRadius="25" FontSize="24"/>
                     </HorizontalStackLayout>
                 </VerticalStackLayout>
-            </Frame>
+            </Border>
 
             <!-- Progress Bar -->
-            <Frame BackgroundColor="#1e293b" BorderColor="#10b981" CornerRadius="15" Padding="20">
+            <Border BackgroundColor="#1e293b" Stroke="#10b981" StrokeShape="RoundRectangle 15,15,15,15" Padding="20">
                 <VerticalStackLayout Spacing="10">
                     <Label Text="{Binding ParikramaCount, StringFormat='Completed: {0}'}" 
                            FontSize="18" TextColor="White" HorizontalOptions="Center"/>
@@ -39,58 +53,73 @@
                     <Label Text="{Binding RemainingParikramas, StringFormat='Remaining: {0}'}" 
                            FontSize="16" TextColor="#94a3b8" HorizontalOptions="Center"/>
                 </VerticalStackLayout>
-            </Frame>
-            <Frame BackgroundColor="#1e293b" BorderColor="#f59e0b" CornerRadius="15" Padding="15">
-                <Label Text="{Binding MovementStatus}" 
-                   FontSize="18" 
-                   HorizontalOptions="Center" 
-                   TextColor="#f59e0b" 
-                   FontAttributes="Bold"/>
-            </Frame>
+            </Border>
+
+            <!-- Current Circle Progress -->
+            <Border BackgroundColor="#1e293b" Stroke="#8b5cf6" StrokeShape="RoundRectangle 15,15,15,15" Padding="20">
+                <VerticalStackLayout Spacing="10">
+                    <Label Text="Current Parikrama" FontSize="18" HorizontalOptions="Center" TextColor="#94a3b8"/>
+                    <Label Text="{Binding CircleDirection}" FontSize="16" HorizontalOptions="Center" TextColor="#8b5cf6"/>
+                    <ProgressBar Progress="{Binding CircleProgress}" 
+                                 ProgressColor="#8b5cf6" 
+                                 HeightRequest="12"
+                                 BackgroundColor="#334155"/>
+                    <Label Text="{Binding CircleProgress, StringFormat='{0:P0}'}" 
+                           FontSize="14" TextColor="#94a3b8" HorizontalOptions="Center"/>
+                    <Label Text="{Binding DistanceInCircle, StringFormat='Distance: {0:F1}m'}" 
+                           FontSize="14" TextColor="#94a3b8" HorizontalOptions="Center"/>
+                </VerticalStackLayout>
+            </Border>
+
             <!-- Compass Display -->
-            <Frame BackgroundColor="#1e293b" BorderColor="#3b82f6" CornerRadius="20" Padding="30">
+            <Border BackgroundColor="#1e293b" Stroke="#3b82f6" StrokeShape="RoundRectangle 20,20,20,20" Padding="30">
                 <VerticalStackLayout Spacing="10">
                     <Label Text="{Binding Heading}" FontSize="48" HorizontalOptions="Center" TextColor="#3b82f6" FontAttributes="Bold"/>
                     <Label Text="{Binding Direction}" FontSize="32" HorizontalOptions="Center" TextColor="White"/>
                     <Label Text="{Binding Accuracy, StringFormat='Accuracy: {0}'}" FontSize="14" HorizontalOptions="Center" TextColor="#94a3b8"/>
                 </VerticalStackLayout>
-            </Frame>
-            <!-- Current Circle Progress -->
-            <Frame BackgroundColor="#1e293b" BorderColor="#8b5cf6" CornerRadius="15" Padding="20">
-                <VerticalStackLayout Spacing="10">
-                    <Label Text="Current Parikrama" FontSize="18" HorizontalOptions="Center" TextColor="#94a3b8"/>
-                    <Label Text="{Binding CircleDirection}" FontSize="16" HorizontalOptions="Center" TextColor="#8b5cf6"/>
-                    <ProgressBar Progress="{Binding CircleProgress}" 
-                     ProgressColor="#8b5cf6" 
-                     HeightRequest="12"
-                     BackgroundColor="#334155"/>
-                    <Label Text="{Binding CircleProgress, StringFormat='{0:F1}% Complete'}" 
-               FontSize="14" TextColor="#94a3b8" HorizontalOptions="Center"/>
-                    <Label Text="{Binding StepsInCircle, StringFormat='Steps: {0}'}" 
-               FontSize="14" TextColor="#94a3b8" HorizontalOptions="Center"/>
-                </VerticalStackLayout>
-            </Frame>
+            </Border>
 
-            <!-- Step Counter -->
-            <Frame BackgroundColor="#1e293b" BorderColor="#3b82f6" CornerRadius="20" Padding="30">
+            <!-- Distance & Speed -->
+            <Border BackgroundColor="#1e293b" Stroke="#3b82f6" StrokeShape="RoundRectangle 20,20,20,20" Padding="30">
                 <VerticalStackLayout Spacing="10">
-                    <Label Text="Steps" FontSize="18" HorizontalOptions="Center" TextColor="#94a3b8"/>
-                    <Label Text="{Binding Steps}" FontSize="56" HorizontalOptions="Center" TextColor="#3b82f6" FontAttributes="Bold"/>
+                    <Label Text="Total Distance" FontSize="18" HorizontalOptions="Center" TextColor="#94a3b8"/>
+                    <Label Text="{Binding Distance, StringFormat='{0:F1} m'}" FontSize="56" HorizontalOptions="Center" TextColor="#3b82f6" FontAttributes="Bold"/>
+                    <Label Text="{Binding Steps, StringFormat='Steps: {0}'}" FontSize="16" HorizontalOptions="Center" TextColor="#94a3b8"/>
                 </VerticalStackLayout>
-            </Frame>
+            </Border>
+
+            <!-- Movement Status & Speed -->
+            <HorizontalStackLayout Spacing="10" HorizontalOptions="Center">
+                <Border BackgroundColor="#1e293b" Stroke="#f59e0b" StrokeShape="RoundRectangle 15,15,15,15" Padding="15" HorizontalOptions="Fill">
+                    <Label Text="{Binding MovementStatus}" 
+                           FontSize="18" 
+                           HorizontalOptions="Center" 
+                           TextColor="#f59e0b" 
+                           FontAttributes="Bold"/>
+                </Border>
+
+                <Border BackgroundColor="#1e293b" Stroke="#10b981" StrokeShape="RoundRectangle 15,15,15,15" Padding="15" HorizontalOptions="Fill">
+                    <Label Text="{Binding CurrentSpeed, StringFormat='{0:F1} km/h'}" 
+                           FontSize="18" 
+                           HorizontalOptions="Center" 
+                           TextColor="#10b981" 
+                           FontAttributes="Bold"/>
+                </Border>
+            </HorizontalStackLayout>
 
             <!-- Target Reached Celebration -->
-            <Frame IsVisible="{Binding TargetReached}" 
+            <Border IsVisible="{Binding TargetReached}" 
                    BackgroundColor="#10b981" 
-                   BorderColor="#059669" 
-                   CornerRadius="15" 
+                   Stroke="#059669"
+                   StrokeShape="RoundRectangle 15,15,15,15"
                    Padding="20">
                 <Label Text="🎉 Target Completed! 🎉" 
                        FontSize="24" 
                        FontAttributes="Bold" 
                        TextColor="White" 
                        HorizontalOptions="Center"/>
-            </Frame>
+            </Border>
 
             <!-- Controls -->
             <HorizontalStackLayout Spacing="15" HorizontalOptions="Center">
@@ -118,3 +147,4 @@
         </VerticalStackLayout>
     </ScrollView>
 </ContentPage>
+    

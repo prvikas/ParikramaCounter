@@ -5,102 +5,136 @@ namespace ParikramaCounter.Models
     public class HeadingTracker
     {
         private double previousHeading = -1;
-        private double cumulativeHeadingChange = 0;
-        private int direction = 0; // 1 = clockwise, -1 = counter-clockwise, 0 = undetermined
-        private const double HEADING_WRAP_THRESHOLD = 180.0;
-        private const double MIN_DIRECTION_CONFIDENCE = 45.0; // Degrees to determine direction
-        private DateTime lastUpdateTime = DateTime.MinValue;
-        private const int MAX_TIME_GAP_MS = 5000; // Reset if no update for 5 seconds
+        private double cumulativeRotation = 0;
+        private DateTime lastUpdate = DateTime.MinValue;
+        private bool isInitialized = false;  // NEW: Track if we've started
 
-        public double CumulativeChange => Math.Abs(cumulativeHeadingChange);
-        public bool IsClockwise => direction > 0;
-        public bool IsCounterClockwise => direction < 0;
-        public int DirectionConfidence { get; private set; }
+        private const double MIN_ROTATION_DEGREES = 340.0;
+        private const double MAX_ROTATION_DEGREES = 380.0;
+        private const double MIN_HEADING_CHANGE = 0.3;
 
-        public void Update(double currentHeading, DateTime timestamp)
+        public double CurrentHeading { get; private set; }
+        public double CumulativeChange => Math.Abs(cumulativeRotation);
+        public bool IsClockwise => cumulativeRotation > 0;
+        public bool IsCounterClockwise => cumulativeRotation < 0;
+        public int DirectionConfidence { get; private set; } = 0;
+
+        public void Update(double currentHeading, bool isMoving, DateTime timestamp)
         {
-            // Initialize on first reading
-            if (previousHeading < 0)
+            // FIXED: If not moving, just update current heading but don't process
+            if (!isMoving)
             {
-                previousHeading = currentHeading;
-                lastUpdateTime = timestamp;
+                CurrentHeading = currentHeading;
+                // Don't update previousHeading - keep it for when movement resumes
                 return;
             }
 
-            // Reset if too much time has passed (stopped moving)
-            if ((timestamp - lastUpdateTime).TotalMilliseconds > MAX_TIME_GAP_MS)
+            // Initialize on first movement
+            if (!isInitialized)
             {
-                cumulativeHeadingChange = 0;
-                direction = 0;
-                DirectionConfidence = 0;
+                previousHeading = currentHeading;
+                CurrentHeading = currentHeading;
+                lastUpdate = timestamp;
+                isInitialized = true;
+                System.Diagnostics.Debug.WriteLine($"📍 START HEADING LOCKED: {currentHeading:F1}°");
+                return;
             }
 
-            lastUpdateTime = timestamp;
+            double deltaTime = (timestamp - lastUpdate).TotalSeconds;
+            if (deltaTime <= 0 || deltaTime > 2.0)
+            {
+                lastUpdate = timestamp;
+                return;
+            }
 
-            // Calculate heading change, accounting for 360° wrap-around
+            // Calculate heading change with wrap-around
             double headingDelta = currentHeading - previousHeading;
 
-            // Handle wrap-around at 0°/360° boundary
-            if (headingDelta > HEADING_WRAP_THRESHOLD)
+            if (headingDelta > 180)
+                headingDelta -= 360;
+            else if (headingDelta < -180)
+                headingDelta += 360;
+
+            // Ignore very small changes (noise)
+            if (Math.Abs(headingDelta) < MIN_HEADING_CHANGE)
             {
-                headingDelta -= 360.0;
-            }
-            else if (headingDelta < -HEADING_WRAP_THRESHOLD)
-            {
-                headingDelta += 360.0;
+                previousHeading = currentHeading;
+                CurrentHeading = currentHeading;
+                lastUpdate = timestamp;
+                return;
             }
 
-            // Accumulate heading change
-            cumulativeHeadingChange += headingDelta;
-
-            // Determine direction once we have confidence
-            if (direction == 0 && Math.Abs(cumulativeHeadingChange) > MIN_DIRECTION_CONFIDENCE)
-            {
-                direction = cumulativeHeadingChange > 0 ? 1 : -1;
-                DirectionConfidence = 100;
-            }
+            // Accumulate rotation
+            cumulativeRotation += headingDelta;
+            CurrentHeading = currentHeading;
 
             // Update direction confidence
-            if (direction != 0)
+            UpdateDirectionConfidence(headingDelta);
+
+            previousHeading = currentHeading;
+            lastUpdate = timestamp;
+
+            System.Diagnostics.Debug.WriteLine($"Heading: {currentHeading:F1}° | Delta: {headingDelta:F2}° | Cumulative: {cumulativeRotation:F1}° | Confidence: {DirectionConfidence}");
+        }
+
+        private void UpdateDirectionConfidence(double deltaHeading)
+        {
+            if (Math.Abs(cumulativeRotation) > 45 && DirectionConfidence == 0)
             {
-                double expectedSign = direction > 0 ? 1 : -1;
-                double actualSign = Math.Sign(headingDelta);
+                DirectionConfidence = 80;
+            }
+
+            if (DirectionConfidence > 0)
+            {
+                double expectedSign = cumulativeRotation > 0 ? 1 : -1;
+                double actualSign = Math.Sign(deltaHeading);
 
                 if (expectedSign == actualSign)
                 {
-                    DirectionConfidence = Math.Min(100, DirectionConfidence + 5);
+                    DirectionConfidence = Math.Min(100, DirectionConfidence + 2);
+                }
+                else if (Math.Abs(deltaHeading) < 1.0)
+                {
+                    // Small noise - don't penalize
                 }
                 else
                 {
-                    DirectionConfidence = Math.Max(0, DirectionConfidence - 10);
-
-                    // Reset if direction confidence lost
-                    if (DirectionConfidence < 20)
-                    {
-                        Reset();
-                    }
+                    DirectionConfidence = Math.Max(0, DirectionConfidence - 8);
                 }
             }
-
-            previousHeading = currentHeading;
         }
 
         public bool HasCompletedFullRotation()
         {
-            return Math.Abs(cumulativeHeadingChange) >= 360.0;
+            double absChange = Math.Abs(cumulativeRotation);
+            bool completed = absChange >= MIN_ROTATION_DEGREES && absChange <= MAX_ROTATION_DEGREES;
+
+            if (completed)
+            {
+                System.Diagnostics.Debug.WriteLine($"✅ 360° ROTATION COMPLETED: {absChange:F1}°");
+            }
+
+            return completed;
         }
 
         public double GetProgress()
         {
-            return Math.Min(100.0, (Math.Abs(cumulativeHeadingChange) / 360.0) * 100.0);
+            return Math.Min(100.0, (Math.Abs(cumulativeRotation) / 360.0) * 100.0);
+        }
+
+        public double GetRotationQuality()
+        {
+            double absChange = Math.Abs(cumulativeRotation);
+            double deviation = Math.Abs(absChange - 360.0);
+            return Math.Max(0, 100.0 - (deviation * 5.0));
         }
 
         public void Reset()
         {
-            cumulativeHeadingChange = 0;
-            direction = 0;
+            cumulativeRotation = 0;
             DirectionConfidence = 0;
-            // Keep previousHeading to maintain continuity
+            isInitialized = false;  // FIXED: Allow new start position
+            System.Diagnostics.Debug.WriteLine("🔄 HeadingTracker Reset - Ready for new circle");
         }
     }
 }

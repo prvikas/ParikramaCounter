@@ -13,21 +13,21 @@ namespace ParikramaCounter.Platforms.Android
 {
     public class AndroidSensorService : Java.Lang.Object, ISensorEventListener, ISensorService
     {
-        private SensorManager sensorManager;
-        private Sensor accelerometer, gyroscope, magnetometer;
+        private SensorManager? sensorManager;
+        private Sensor? accelerometer, gyroscope, magnetometer;
 
         private float[] accelValues = new float[3];
         private float[] gyroValues = new float[3];
         private float[] magValues = new float[3];
 
-        public event Action<double[], double[], double[]> SensorDataReceived;
+        public event Action<double[], double[], double[]>? SensorDataReceived;
 
         public AndroidSensorService()
         {
-            sensorManager = (SensorManager)AndroidApp.Application.Context.GetSystemService(Context.SensorService);
-            accelerometer = sensorManager.GetDefaultSensor(SensorType.Accelerometer);
-            gyroscope = sensorManager.GetDefaultSensor(SensorType.Gyroscope);
-            magnetometer = sensorManager.GetDefaultSensor(SensorType.MagneticField);
+            sensorManager = AndroidApp.Application.Context.GetSystemService(Context.SensorService) as SensorManager;
+            accelerometer = sensorManager?.GetDefaultSensor(SensorType.Accelerometer);
+            gyroscope = sensorManager?.GetDefaultSensor(SensorType.Gyroscope);
+            magnetometer = sensorManager?.GetDefaultSensor(SensorType.MagneticField);
         }
 
         public void Start()
@@ -42,11 +42,15 @@ namespace ParikramaCounter.Platforms.Android
 
         public void Stop()
         {
-            sensorManager.UnregisterListener(this);
+            if (sensorManager != null)
+                sensorManager.UnregisterListener(this);
         }
 
-        public void OnSensorChanged(SensorEvent e)
+        public void OnSensorChanged(SensorEvent? e)
         {
+            if (e == null || e.Sensor == null || e.Values == null)
+                return;
+
             if (e.Sensor.Type == SensorType.Accelerometer)
                 accelValues = e.Values.ToArray();
             else if (e.Sensor.Type == SensorType.Gyroscope)
@@ -61,6 +65,6 @@ namespace ParikramaCounter.Platforms.Android
             SensorDataReceived?.Invoke(accel, gyro, mag);
         }
 
-        public void OnAccuracyChanged(Sensor sensor, [GeneratedEnum] SensorStatus accuracy) { }
+        public void OnAccuracyChanged(Sensor? sensor, [GeneratedEnum] SensorStatus accuracy) { }
     }
 }

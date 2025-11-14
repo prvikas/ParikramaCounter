@@ -5,87 +5,68 @@ namespace ParikramaCounter.Services
 {
     public class SensorFusionEngine
     {
-        private readonly KalmanFilter headingFilter = new KalmanFilter(0.001, 0.5);
         private readonly StepDetector stepDetector = new StepDetector();
-
         private double[] gravity = new double[3];
         private double[] magnetic = new double[3];
-        private const double ALPHA_HIGH_PASS = 0.8;
-        private const double ALPHA_LOW_PASS = 0.1;
-        public bool IsMoving => stepDetector.IsMoving; // Expose movement status
+        private const double ALPHA_GRAVITY = 0.2;
+        private const double ALPHA_MAG = 0.1;
 
+        public bool IsMoving => stepDetector.IsMoving;
 
         public SensorData ProcessSensorData(double[] accel, double[] gyro, double[] mag)
         {
-            // High-pass filter to remove gravity
-            gravity[0] = ALPHA_HIGH_PASS * gravity[0] + (1 - ALPHA_HIGH_PASS) * accel[0];
-            gravity[1] = ALPHA_HIGH_PASS * gravity[1] + (1 - ALPHA_HIGH_PASS) * accel[1];
-            gravity[2] = ALPHA_HIGH_PASS * gravity[2] + (1 - ALPHA_HIGH_PASS) * accel[2];
+            // Low-pass filter for gravity
+            gravity[0] = ALPHA_GRAVITY * accel[0] + (1 - ALPHA_GRAVITY) * gravity[0];
+            gravity[1] = ALPHA_GRAVITY * accel[1] + (1 - ALPHA_GRAVITY) * gravity[1];
+            gravity[2] = ALPHA_GRAVITY * accel[2] + (1 - ALPHA_GRAVITY) * gravity[2];
 
-            double linearAccelX = accel[0] - gravity[0];
-            double linearAccelY = accel[1] - gravity[1];
-            double linearAccelZ = accel[2] - gravity[2];
+            // Get linear acceleration (remove gravity)
+            double linearX = accel[0] - gravity[0];
+            double linearY = accel[1] - gravity[1];
+            double linearZ = accel[2] - gravity[2];
+            double accelMag = Math.Sqrt(linearX * linearX + linearY * linearY + linearZ * linearZ);
 
-            // Low-pass filter on magnetometer
-            magnetic[0] = ALPHA_LOW_PASS * mag[0] + (1 - ALPHA_LOW_PASS) * magnetic[0];
-            magnetic[1] = ALPHA_LOW_PASS * mag[1] + (1 - ALPHA_LOW_PASS) * magnetic[1];
-            magnetic[2] = ALPHA_LOW_PASS * mag[2] + (1 - ALPHA_LOW_PASS) * magnetic[2];
+            // Update movement detector
+            stepDetector.Update(accelMag);
 
-            // Calculate acceleration magnitude for step detection
-            double accelMagnitude = Math.Sqrt(
-                linearAccelX * linearAccelX +
-                linearAccelY * linearAccelY +
-                linearAccelZ * linearAccelZ
-            );
+            // Filter magnetometer
+            magnetic[0] = ALPHA_MAG * mag[0] + (1 - ALPHA_MAG) * magnetic[0];
+            magnetic[1] = ALPHA_MAG * mag[1] + (1 - ALPHA_MAG) * magnetic[1];
+            magnetic[2] = ALPHA_MAG * mag[2] + (1 - ALPHA_MAG) * magnetic[2];
 
-            bool stepDetected = stepDetector.DetectStep(accelMagnitude);
-
-            // Tilt-compensated compass calculation
+            // Calculate tilt-compensated compass heading
             double heading = CalculateTiltCompensatedHeading(gravity, magnetic);
-            double filteredHeading = headingFilter.Update(heading);
-
 
             return new SensorData
             {
-                AccelX = accel[0],
-                AccelY = accel[1],
-                AccelZ = accel[2],
-                GyroX = gyro[0],
-                GyroY = gyro[1],
-                GyroZ = gyro[2],
-                MagX = magnetic[0],
-                MagY = magnetic[1],
-                MagZ = magnetic[2],
-                Heading = filteredHeading,
-                TrueHeading = filteredHeading, // Add magnetic declination if needed
-                Direction = GetDirectionFromHeading(filteredHeading),
-                Steps = stepDetector.StepCount,
-                AccelerationMagnitude = accelMagnitude,
+                Heading = heading,
+                Direction = GetDirectionFromHeading(heading),
+                AccelerationMagnitude = accelMag,
                 Timestamp = DateTime.Now
             };
         }
 
-        private double CalculateTiltCompensatedHeading(double[] gravity, double[] mag)
+        private double CalculateTiltCompensatedHeading(double[] grav, double[] mag)
         {
-            // Normalize gravity vector
-            double gNorm = Math.Sqrt(gravity[0] * gravity[0] + gravity[1] * gravity[1] + gravity[2] * gravity[2]);
-            if (gNorm == 0) return 0;
+            // Normalize gravity
+            double gNorm = Math.Sqrt(grav[0] * grav[0] + grav[1] * grav[1] + grav[2] * grav[2]);
+            if (gNorm < 0.01) return 0;
 
-            double gx = gravity[0] / gNorm;
-            double gy = gravity[1] / gNorm;
-            double gz = gravity[2] / gNorm;
+            double gx = grav[0] / gNorm;
+            double gy = grav[1] / gNorm;
+            double gz = grav[2] / gNorm;
 
-            // Calculate tilt-compensated magnetic field
-            double pitchAngle = Math.Asin(-gx);
-            double rollAngle = Math.Atan2(gy, gz);
+            // Calculate pitch and roll
+            double pitch = Math.Asin(-gx);
+            double roll = Math.Atan2(gy, gz);
 
-            double magX = mag[0] * Math.Cos(pitchAngle) +
-                         mag[2] * Math.Sin(pitchAngle);
+            // Tilt compensation
+            double magX = mag[0] * Math.Cos(pitch) + mag[2] * Math.Sin(pitch);
+            double magY = mag[0] * Math.Sin(roll) * Math.Sin(pitch) +
+                         mag[1] * Math.Cos(roll) -
+                         mag[2] * Math.Sin(roll) * Math.Cos(pitch);
 
-            double magY = mag[0] * Math.Sin(rollAngle) * Math.Sin(pitchAngle) +
-                         mag[1] * Math.Cos(rollAngle) -
-                         mag[2] * Math.Sin(rollAngle) * Math.Cos(pitchAngle);
-
+            // Calculate heading
             double heading = Math.Atan2(magY, magX) * (180.0 / Math.PI);
             if (heading < 0) heading += 360;
 
@@ -102,7 +83,8 @@ namespace ParikramaCounter.Services
         public void Reset()
         {
             stepDetector.Reset();
-            headingFilter.Reset();
+            Array.Clear(gravity, 0, gravity.Length);
+            Array.Clear(magnetic, 0, magnetic.Length);
         }
     }
 }

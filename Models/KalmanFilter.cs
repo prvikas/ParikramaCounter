@@ -4,36 +4,53 @@ namespace ParikramaCounter.Models
 {
     public class KalmanFilter
     {
-        private double estimate;
+        private double processNoise;
+        private double measurementNoise;
+        private double estimation;
         private double errorCovariance;
-        private readonly double processNoise;
-        private readonly double measurementNoise;
+        private bool initialized = false;
 
-        public KalmanFilter(double processNoise = 0.001, double measurementNoise = 0.5)
+        public KalmanFilter(double processNoise, double measurementNoise)
         {
             this.processNoise = processNoise;
             this.measurementNoise = measurementNoise;
-            this.estimate = 0;
-            this.errorCovariance = 1;
+            this.errorCovariance = 1.0;
         }
 
         public double Update(double measurement)
         {
+            if (!initialized)
+            {
+                estimation = measurement;
+                initialized = true;
+                return estimation;
+            }
+
+            // Handle 360° wrap-around for heading
+            double diff = measurement - estimation;
+            if (diff > 180) diff -= 360;
+            if (diff < -180) diff += 360;
+            measurement = estimation + diff;
+
             // Prediction
-            errorCovariance += processNoise;
+            double predictionError = errorCovariance + processNoise;
 
             // Update
-            double kalmanGain = errorCovariance / (errorCovariance + measurementNoise);
-            estimate += kalmanGain * (measurement - estimate);
-            errorCovariance *= (1 - kalmanGain);
+            double kalmanGain = predictionError / (predictionError + measurementNoise);
+            estimation = estimation + kalmanGain * (measurement - estimation);
+            errorCovariance = (1 - kalmanGain) * predictionError;
 
-            return estimate;
+            // Normalize to 0-360
+            while (estimation < 0) estimation += 360;
+            while (estimation >= 360) estimation -= 360;
+
+            return estimation;
         }
 
-        public void Reset(double initialValue = 0)
+        public void Reset()
         {
-            estimate = initialValue;
-            errorCovariance = 1;
+            initialized = false;
+            errorCovariance = 1.0;
         }
     }
 }

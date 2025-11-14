@@ -1,7 +1,9 @@
 <?xml version="1.0" encoding="utf-8" ?>
 <ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
              xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+             xmlns:viewmodels="clr-namespace:ParikramaCounter.ViewModels"
              x:Class="ParikramaCounter.Views.DiagnosticsPage"
+             x:DataType="viewmodels:DiagnosticsViewModel"
              Title="Diagnostics"
              BackgroundColor="#0f172a">
 
@@ -12,7 +14,7 @@
             <Label Text="{Binding Timestamp}" FontSize="12" TextColor="#94a3b8" HorizontalOptions="Center"/>
 
             <!-- Accelerometer -->
-            <Frame BackgroundColor="#1e293b" BorderColor="#3b82f6" CornerRadius="15" Padding="20">
+            <Border BackgroundColor="#1e293b" Stroke="#3b82f6" StrokeShape="RoundRectangle 15,15,15,15" Padding="20">
                 <VerticalStackLayout Spacing="8">
                     <Label Text="Accelerometer (m/s²)" FontSize="18" FontAttributes="Bold" TextColor="#3b82f6"/>
                     <Grid ColumnDefinitions="*,*" RowDefinitions="Auto,Auto,Auto" ColumnSpacing="10" RowSpacing="5">
@@ -24,10 +26,10 @@
                         <Label Text="{Binding AccelZ}" TextColor="White" Grid.Row="2" Grid.Column="1"/>
                     </Grid>
                 </VerticalStackLayout>
-            </Frame>
+            </Border>
 
             <!-- Gyroscope -->
-            <Frame BackgroundColor="#1e293b" BorderColor="#3b82f6" CornerRadius="15" Padding="20">
+            <Border BackgroundColor="#1e293b" Stroke="#3b82f6" StrokeShape="RoundRectangle 15,15,15,15" Padding="20">
                 <VerticalStackLayout Spacing="8">
                     <Label Text="Gyroscope (rad/s)" FontSize="18" FontAttributes="Bold" TextColor="#3b82f6"/>
                     <Grid ColumnDefinitions="*,*" RowDefinitions="Auto,Auto,Auto" ColumnSpacing="10" RowSpacing="5">
@@ -39,10 +41,10 @@
                         <Label Text="{Binding GyroZ}" TextColor="White" Grid.Row="2" Grid.Column="1"/>
                     </Grid>
                 </VerticalStackLayout>
-            </Frame>
+            </Border>
 
             <!-- Magnetometer -->
-            <Frame BackgroundColor="#1e293b" BorderColor="#3b82f6" CornerRadius="15" Padding="20">
+            <Border BackgroundColor="#1e293b" Stroke="#3b82f6" StrokeShape="RoundRectangle 15,15,15,15" Padding="20">
                 <VerticalStackLayout Spacing="8">
                     <Label Text="Magnetometer (µT)" FontSize="18" FontAttributes="Bold" TextColor="#3b82f6"/>
                     <Grid ColumnDefinitions="*,*" RowDefinitions="Auto,Auto,Auto" ColumnSpacing="10" RowSpacing="5">
@@ -54,10 +56,10 @@
                         <Label Text="{Binding MagZ}" TextColor="White" Grid.Row="2" Grid.Column="1"/>
                     </Grid>
                 </VerticalStackLayout>
-            </Frame>
+            </Border>
 
             <!-- Heading -->
-            <Frame BackgroundColor="#1e293b" BorderColor="#3b82f6" CornerRadius="15" Padding="20">
+            <Border BackgroundColor="#1e293b" Stroke="#3b82f6" StrokeShape="RoundRectangle 15,15,15,15" Padding="20">
                 <VerticalStackLayout Spacing="8">
                     <Label Text="Heading (degrees)" FontSize="18" FontAttributes="Bold" TextColor="#3b82f6"/>
                     <Grid ColumnDefinitions="*,*" RowDefinitions="Auto,Auto" ColumnSpacing="10" RowSpacing="5">
@@ -67,10 +69,10 @@
                         <Label Text="{Binding TrueHeading}" TextColor="White" Grid.Row="1" Grid.Column="1"/>
                     </Grid>
                 </VerticalStackLayout>
-            </Frame>
+            </Border>
 
             <!-- Step Detection Metrics -->
-            <Frame BackgroundColor="#1e293b" BorderColor="#3b82f6" CornerRadius="15" Padding="20">
+            <Border BackgroundColor="#1e293b" Stroke="#3b82f6" StrokeShape="RoundRectangle 15,15,15,15" Padding="20">
                 <VerticalStackLayout Spacing="8">
                     <Label Text="Step Detection" FontSize="18" FontAttributes="Bold" TextColor="#3b82f6"/>
                     <Grid ColumnDefinitions="*,*" RowDefinitions="Auto,Auto" ColumnSpacing="10" RowSpacing="5">
@@ -80,7 +82,7 @@
                         <Label Text="{Binding CurrentThreshold}" TextColor="White" Grid.Row="1" Grid.Column="1"/>
                     </Grid>
                 </VerticalStackLayout>
-            </Frame>
+            </Border>
 
         </VerticalStackLayout>
     </ScrollView>

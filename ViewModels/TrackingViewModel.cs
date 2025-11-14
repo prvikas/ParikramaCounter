@@ -14,17 +14,19 @@ namespace ParikramaCounter.ViewModels
         private readonly SensorFusionEngine fusionEngine = new SensorFusionEngine();
         private readonly ParikramaTracker parikramaTracker = new ParikramaTracker();
 
+        private DateTime lastUIUpdate = DateTime.MinValue;
+        private const int UI_UPDATE_INTERVAL_MS = 500;
+
         private bool isTracking;
         private string heading = "0°";
         private string direction = "N";
-        private int steps;
         private int parikramaCount;
         private int targetParikrama = 7;
-        private double progressPercentage;
-        private string accuracy = "High";
+        private double circleProgress;
+        private string circleDirection = "Determining...";
+        private double distanceInCircle;
         private string startStopButtonText = "Start";
         private bool targetReached;
-        private bool isMoving;
         private string movementStatus = "Stationary";
 
         public bool IsTracking
@@ -56,12 +58,6 @@ namespace ParikramaCounter.ViewModels
             set { direction = value; OnPropertyChanged(); }
         }
 
-        public int Steps
-        {
-            get => steps;
-            set { steps = value; OnPropertyChanged(); }
-        }
-
         public int ParikramaCount
         {
             get => parikramaCount;
@@ -69,7 +65,7 @@ namespace ParikramaCounter.ViewModels
             {
                 parikramaCount = value;
                 OnPropertyChanged();
-                UpdateProgress();
+                OnPropertyChanged(nameof(RemainingParikramas));
             }
         }
 
@@ -79,31 +75,36 @@ namespace ParikramaCounter.ViewModels
             set
             {
                 targetParikrama = value;
-                parikramaTracker.TargetParikramaCount = value;
+                parikramaTracker.SetTarget(value);
                 OnPropertyChanged();
                 OnPropertyChanged(nameof(RemainingParikramas));
-                UpdateProgress();
             }
         }
 
         public int RemainingParikramas => Math.Max(0, TargetParikrama - ParikramaCount);
 
-        public double ProgressPercentage
+        public double CircleProgress
         {
-            get => progressPercentage;
-            set { progressPercentage = value; OnPropertyChanged(); }
+            get => circleProgress;
+            set { circleProgress = value; OnPropertyChanged(); }
+        }
+
+        public string CircleDirection
+        {
+            get => circleDirection;
+            set { circleDirection = value; OnPropertyChanged(); }
+        }
+
+        public double DistanceInCircle
+        {
+            get => distanceInCircle;
+            set { distanceInCircle = value; OnPropertyChanged(); }
         }
 
         public bool TargetReached
         {
             get => targetReached;
             set { targetReached = value; OnPropertyChanged(); }
-        }
-
-        public string Accuracy
-        {
-            get => accuracy;
-            set { accuracy = value; OnPropertyChanged(); }
         }
 
         public string MovementStatus
@@ -127,38 +128,47 @@ namespace ParikramaCounter.ViewModels
             IncrementTargetCommand = new Command(() => TargetParikrama++);
             DecrementTargetCommand = new Command(() => { if (TargetParikrama > 1) TargetParikrama--; });
 
-            parikramaTracker.TargetParikramaCount = targetParikrama;
+            parikramaTracker.SetTarget(targetParikrama);
         }
 
         private void OnSensorDataReceived(double[] accel, double[] gyro, double[] mag)
         {
             var data = fusionEngine.ProcessSensorData(accel, gyro, mag);
 
+            // Always update tracking logic (off UI thread)
+            bool completed = parikramaTracker.Update(data.Heading, fusionEngine.IsMoving);
+
+            // Throttle UI updates
+            bool shouldUpdate = (DateTime.Now - lastUIUpdate).TotalMilliseconds >= UI_UPDATE_INTERVAL_MS || completed;
+
+            if (!shouldUpdate)
+            {
+                return;
+            }
+
+            lastUIUpdate = DateTime.Now;
+
             MainThread.BeginInvokeOnMainThread(() =>
             {
+                // Update UI
                 Heading = $"{data.Heading:F1}°";
                 Direction = data.Direction;
-                Steps = data.Steps;
-
-                // Update movement status
-                MovementStatus = fusionEngine.IsMoving ? "Walking" : "Stationary";
-
-                // Update parikrama progress
-                CircleProgress = parikramaTracker.CurrentProgress;
+                MovementStatus = fusionEngine.IsMoving ? "🚶 Walking" : "🛑 Stationary";
+                CircleProgress = parikramaTracker.CircleProgress / 100.0;
                 CircleDirection = parikramaTracker.GetDirection();
-                StepsInCircle = parikramaTracker.CurrentStepsInCircle;
+                DistanceInCircle = parikramaTracker.CurrentDistanceInCircle;
 
-                // Check parikrama completion using heading-based algorithm
-                bool completed = parikramaTracker.CheckAndUpdateParikrama(
-                    data.Heading,
-                    data.Steps,
-                    fusionEngine.IsMoving,
-                    data.Timestamp
-                );
-
+                // Handle completion
                 if (completed)
                 {
+                    System.Diagnostics.Debug.WriteLine($"🎉 UI UPDATE: Parikrama #{parikramaTracker.ParikramaCount}");
+
                     ParikramaCount = parikramaTracker.ParikramaCount;
+                    OnPropertyChanged(nameof(ParikramaCount));
+                    OnPropertyChanged(nameof(RemainingParikramas));
+
+                    CircleProgress = 0;
+                    DistanceInCircle = 0;
 
                     if (parikramaTracker.IsTargetReached && !TargetReached)
                     {
@@ -173,44 +183,11 @@ namespace ParikramaCounter.ViewModels
             });
         }
 
-        // Add new properties
-        private double circleProgress;
-        private string circleDirection = "Determining...";
-        private int stepsInCircle;
-
-        public double CircleProgress
-        {
-            get => circleProgress;
-            set { circleProgress = value; OnPropertyChanged(); }
-        }
-
-        public string CircleDirection
-        {
-            get => circleDirection;
-            set { circleDirection = value; OnPropertyChanged(); }
-        }
-
-        public int StepsInCircle
-        {
-            get => stepsInCircle;
-            set { stepsInCircle = value; OnPropertyChanged(); }
-        }
-
-
-        private void UpdateProgress()
-        {
-            ProgressPercentage = TargetParikrama > 0
-                ? (double)ParikramaCount / TargetParikrama
-                : 0;
-            OnPropertyChanged(nameof(RemainingParikramas));
-        }
-
         private void VibrateForParikramaCompletion()
         {
             try
             {
-                var duration = TimeSpan.FromMilliseconds(500);
-                Vibration.Default.Vibrate(duration);
+                Vibration.Default.Vibrate(TimeSpan.FromMilliseconds(500));
             }
             catch (Exception ex)
             {
@@ -222,12 +199,11 @@ namespace ParikramaCounter.ViewModels
         {
             try
             {
-                // Triple vibration for target completion
-                Vibration.Default.Vibrate(TimeSpan.FromMilliseconds(300));
-                await System.Threading.Tasks.Task.Delay(200);
-                Vibration.Default.Vibrate(TimeSpan.FromMilliseconds(300));
-                await System.Threading.Tasks.Task.Delay(200);
-                Vibration.Default.Vibrate(TimeSpan.FromMilliseconds(300));
+                for (int i = 0; i < 3; i++)
+                {
+                    Vibration.Default.Vibrate(TimeSpan.FromMilliseconds(300));
+                    await System.Threading.Tasks.Task.Delay(200);
+                }
             }
             catch (Exception ex)
             {
@@ -249,11 +225,11 @@ namespace ParikramaCounter.ViewModels
         {
             fusionEngine.Reset();
             parikramaTracker.Reset();
-            Steps = 0;
             ParikramaCount = 0;
             TargetReached = false;
             MovementStatus = "Stationary";
-            UpdateProgress();
+            CircleProgress = 0;
+            DistanceInCircle = 0;
         }
 
         public event PropertyChangedEventHandler PropertyChanged;

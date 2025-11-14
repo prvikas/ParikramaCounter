@@ -1,126 +1,237 @@
 ﻿using System;
-using System.Collections.Generic;
 
 namespace ParikramaCounter.Models
 {
     public class ParikramaTracker
     {
-        private readonly HeadingTracker headingTracker = new HeadingTracker();
-        private readonly Queue<int> recentSteps = new Queue<int>(10);
+        private double? startHeading = null;
+        private double lastHeading = 0;
+        private double totalRotation = 0;
+        private int rotationDirection = 0;
 
-        private int stepsAtStart = 0;
-        private int minimumStepsRequired = 30; // Minimum steps for valid parikrama
-        private DateTime lastValidationTime = DateTime.Now;
+        private bool isActive = false;
+        private DateTime startTime;
+        private int movementCount = 0;
+        private int debugCounter = 0;
+        private int lastProgressMilestone = 0;
+
+        // ADDED: Track if we're near completion to prevent false resets
+        private bool nearCompletion = false;
 
         public int ParikramaCount { get; private set; }
         public int TargetParikramaCount { get; set; } = 7;
-        public double CurrentProgress => headingTracker.GetProgress();
-        public int CurrentStepsInCircle { get; private set; }
+        public double CircleProgress => Math.Min(100.0, Math.Abs(totalRotation) / 360.0 * 100.0);
+        public double CurrentDistanceInCircle { get; private set; } = 0;
 
         public bool IsTargetReached => ParikramaCount >= TargetParikramaCount;
         public int RemainingParikramas => Math.Max(0, TargetParikramaCount - ParikramaCount);
-        public double ProgressPercentage => TargetParikramaCount > 0
-            ? (double)ParikramaCount / TargetParikramaCount * 100
-            : 0;
 
-        public bool CheckAndUpdateParikrama(double currentHeading, int totalSteps, bool isMoving, DateTime timestamp)
+        public bool Update(double currentHeading, bool isMoving)
         {
-            // Only update when actually moving
             if (!isMoving)
+            {
+                debugCounter++;
+                if (debugCounter % 100 == 0)
+                {
+                    System.Diagnostics.Debug.WriteLine($"⏸️ PAUSED at {CircleProgress:F1}%");
+                }
                 return false;
-
-            // Update heading tracker
-            headingTracker.Update(currentHeading, timestamp);
-
-            // Track steps in current circle
-            if (stepsAtStart == 0)
-            {
-                stepsAtStart = totalSteps;
             }
-            CurrentStepsInCircle = totalSteps - stepsAtStart;
 
-            // Validate movement pattern
-            recentSteps.Enqueue(totalSteps);
-            if (recentSteps.Count > 10)
-                recentSteps.Dequeue();
+            debugCounter = 0;
+            movementCount++;
 
-            // Check if completed a full 360° rotation
-            if (headingTracker.HasCompletedFullRotation())
+            if (startHeading == null)
             {
-                // Validate it's a real parikrama
-                if (IsValidParikrama())
+                startHeading = currentHeading;
+                lastHeading = currentHeading;
+                isActive = true;
+                startTime = DateTime.Now;
+                nearCompletion = false; // RESET
+                System.Diagnostics.Debug.WriteLine($"🎯 START: {currentHeading:F1}°");
+                return false;
+            }
+
+            double delta = currentHeading - lastHeading;
+
+            if (delta > 180) delta -= 360;
+            if (delta < -180) delta += 360;
+
+            if (Math.Abs(delta) < 0.3)
+            {
+                lastHeading = currentHeading;
+                return false;
+            }
+
+            if (rotationDirection == 0 && Math.Abs(totalRotation) > 10)
+            {
+                rotationDirection = totalRotation > 0 ? 1 : -1;
+                System.Diagnostics.Debug.WriteLine($"📍 Direction: {(rotationDirection > 0 ? "Clockwise" : "Counter-Clockwise")}");
+            }
+
+            totalRotation += delta;
+            lastHeading = currentHeading;
+
+            CurrentDistanceInCircle = Math.Abs(totalRotation) * 0.083;
+
+            double absRotation = Math.Abs(totalRotation);
+
+            // ADDED: Mark when near completion (90%+)
+            if (absRotation >= 320 && !nearCompletion)
+            {
+                nearCompletion = true;
+                System.Diagnostics.Debug.WriteLine($"⚠️ APPROACHING COMPLETION: {absRotation:F1}°");
+            }
+
+            // Log progress milestones
+            int currentMilestone = (int)(CircleProgress / 10);
+            if (currentMilestone > lastProgressMilestone)
+            {
+                lastProgressMilestone = currentMilestone;
+                System.Diagnostics.Debug.WriteLine($"📐 Progress: {CircleProgress:F0}% | Total: {totalRotation:F1}° | Distance: {CurrentDistanceInCircle:F1}m");
+            }
+
+            // FIXED: Check completion in range 340-400 (allow overshoot to 400°)
+            if (absRotation >= 340 && absRotation <= 400)
+            {
+                double duration = (DateTime.Now - startTime).TotalSeconds;
+
+                System.Diagnostics.Debug.WriteLine("========================================");
+                System.Diagnostics.Debug.WriteLine($"🔴 CIRCLE COMPLETE:");
+                System.Diagnostics.Debug.WriteLine($"   Rotation: {totalRotation:F1}°");
+                System.Diagnostics.Debug.WriteLine($"   Abs Rotation: {absRotation:F1}°");
+                System.Diagnostics.Debug.WriteLine($"   Distance: {CurrentDistanceInCircle:F1}m");
+                System.Diagnostics.Debug.WriteLine($"   Duration: {duration:F1}s");
+                System.Diagnostics.Debug.WriteLine($"   Movements: {movementCount}");
+                System.Diagnostics.Debug.WriteLine($"   Direction: {GetDirection()}");
+
+                // RELAXED validation
+                if (IsValidParikrama(duration))
                 {
                     ParikramaCount++;
+                    System.Diagnostics.Debug.WriteLine($"✅ PARIKRAMA #{ParikramaCount} COUNTED!");
+                    System.Diagnostics.Debug.WriteLine($"   Target: {TargetParikramaCount}");
+                    System.Diagnostics.Debug.WriteLine($"   Remaining: {RemainingParikramas}");
+                    System.Diagnostics.Debug.WriteLine("========================================");
+
                     ResetCircle();
-                    return true; // Trigger vibration
+                    return true;
                 }
                 else
                 {
-                    // Invalid parikrama (e.g., spinning in place)
-                    ResetCircle();
+                    System.Diagnostics.Debug.WriteLine($"❌ INVALID (validation failed)");
+                    System.Diagnostics.Debug.WriteLine("========================================");
+
+                    // CHANGED: Don't reset immediately if near completion
+                    // Give user a few more seconds to complete properly
+                    if (absRotation > 380 || duration > 120) // Only reset if way over or timeout
+                    {
+                        System.Diagnostics.Debug.WriteLine($"⚠️ FORCED RESET (overshoot or timeout)");
+                        ResetCircle();
+                    }
+                    else
+                    {
+                        System.Diagnostics.Debug.WriteLine($"⚠️ KEEPING TRACKING (allowing retry)");
+                    }
+
                     return false;
                 }
+            }
+
+            // ADDED: Force reset if going way over 400° (prevent infinite accumulation)
+            if (absRotation > 420)
+            {
+                System.Diagnostics.Debug.WriteLine($"⚠️ OVERSHOOT! Resetting at {absRotation:F1}°");
+                ResetCircle();
             }
 
             return false;
         }
 
-        private bool IsValidParikrama()
+        private bool IsValidParikrama(double duration)
         {
-            // Must have walked minimum steps
-            if (CurrentStepsInCircle < minimumStepsRequired)
-                return false;
-
-            // Check if steps are distributed over time (not all at once)
-            if (recentSteps.Count >= 5)
+            // RELAXED: Minimum duration from 10s to 8s
+            if (duration < 8)
             {
-                var stepsList = new List<int>(recentSteps);
-                bool hasConsistentMovement = true;
-
-                for (int i = 1; i < stepsList.Count; i++)
-                {
-                    int stepDelta = stepsList[i] - stepsList[i - 1];
-                    // Should have some steps in each interval
-                    if (stepDelta < 1)
-                    {
-                        hasConsistentMovement = false;
-                        break;
-                    }
-                }
-
-                if (!hasConsistentMovement)
-                    return false;
+                System.Diagnostics.Debug.WriteLine($"   ❌ Too fast: {duration:F1}s < 8s");
+                return false;
             }
 
-            // Must have reasonable direction confidence
-            if (headingTracker.DirectionConfidence < 50)
+            if (duration > 300)
+            {
+                System.Diagnostics.Debug.WriteLine($"   ❌ Too slow: {duration:F1}s > 300s");
                 return false;
+            }
 
+            // RELAXED: Minimum movements from 20 to 15
+            if (movementCount < 15)
+            {
+                System.Diagnostics.Debug.WriteLine($"   ❌ Too few movements: {movementCount} < 15");
+                return false;
+            }
+
+            // RELAXED: Minimum distance from 15m to 12m
+            if (CurrentDistanceInCircle < 12.0)
+            {
+                System.Diagnostics.Debug.WriteLine($"   ❌ Too short: {CurrentDistanceInCircle:F1}m < 12m");
+                return false;
+            }
+
+            if (CurrentDistanceInCircle > 100.0)
+            {
+                System.Diagnostics.Debug.WriteLine($"   ❌ Too far: {CurrentDistanceInCircle:F1}m > 100m");
+                return false;
+            }
+
+            // REMOVED: Direction confidence check (too strict)
+            // if (rotationDirection == 0)
+            // {
+            //     System.Diagnostics.Debug.WriteLine($"   ❌ Direction not determined");
+            //     return false;
+            // }
+
+            System.Diagnostics.Debug.WriteLine($"   ✅ All validations passed!");
             return true;
         }
 
         private void ResetCircle()
         {
-            headingTracker.Reset();
-            stepsAtStart = 0;
-            CurrentStepsInCircle = 0;
-            recentSteps.Clear();
+            System.Diagnostics.Debug.WriteLine($"🔄 RESETTING: {totalRotation:F1}° → 0°");
+
+            startHeading = null;
+            totalRotation = 0;
+            rotationDirection = 0;
+            isActive = false;
+            movementCount = 0;
+            lastProgressMilestone = 0;
+            CurrentDistanceInCircle = 0;
+            nearCompletion = false;
         }
 
         public void Reset()
         {
             ParikramaCount = 0;
             ResetCircle();
+            System.Diagnostics.Debug.WriteLine("🔄 FULL RESET - All counters cleared");
         }
 
         public string GetDirection()
         {
-            if (headingTracker.IsClockwise)
-                return "Clockwise ↻";
-            else if (headingTracker.IsCounterClockwise)
-                return "Counter-Clockwise ↺";
-            else
-                return "Determining...";
+            if (rotationDirection > 0) return "Clockwise ↻";
+            if (rotationDirection < 0) return "Counter-Clockwise ↺";
+            return "Determining...";
+        }
+
+        public void SetTarget(int target)
+        {
+            TargetParikramaCount = Math.Max(1, target);
+            System.Diagnostics.Debug.WriteLine($"🎯 Target set to: {TargetParikramaCount}");
+        }
+
+        public void ForceIncrement()
+        {
+            ParikramaCount++;
+            System.Diagnostics.Debug.WriteLine($"⚡ FORCED INCREMENT: {ParikramaCount}");
         }
     }
 }
