@@ -16,6 +16,7 @@ namespace ParikramaCounter.ViewModels
 
         private DateTime lastUIUpdate = DateTime.MinValue;
         private const int UI_UPDATE_INTERVAL_MS = 500;
+        private bool hasStartedTracking = false; // ADDED
 
         private bool isTracking;
         private string heading = "0°";
@@ -28,6 +29,7 @@ namespace ParikramaCounter.ViewModels
         private string startStopButtonText = "Start";
         private bool targetReached;
         private string movementStatus = "Stationary";
+        private string calibrationStatus = "Initializing..."; // ADDED
 
         public bool IsTracking
         {
@@ -113,6 +115,13 @@ namespace ParikramaCounter.ViewModels
             set { movementStatus = value; OnPropertyChanged(); }
         }
 
+        // ADDED: Calibration status
+        public string CalibrationStatus
+        {
+            get => calibrationStatus;
+            set { calibrationStatus = value; OnPropertyChanged(); }
+        }
+
         public ICommand StartStopCommand { get; }
         public ICommand ResetCommand { get; }
         public ICommand IncrementTargetCommand { get; }
@@ -129,14 +138,45 @@ namespace ParikramaCounter.ViewModels
             DecrementTargetCommand = new Command(() => { if (TargetParikrama > 1) TargetParikrama--; });
 
             parikramaTracker.SetTarget(targetParikrama);
+
+            // ADDED: Start sensors immediately for background calibration
+            sensorService.Start();
         }
 
         private void OnSensorDataReceived(double[] accel, double[] gyro, double[] mag)
         {
             var data = fusionEngine.ProcessSensorData(accel, gyro, mag);
 
-            // Always update tracking logic (off UI thread)
-            bool completed = parikramaTracker.Update(data.Heading, fusionEngine.IsMoving);
+            // ADDED: Update calibration status
+            if (!fusionEngine.IsCalibrated)
+            {
+                MainThread.BeginInvokeOnMainThread(() =>
+                {
+                    CalibrationStatus = "⏳ Calibrating compass...";
+                });
+                return; // Don't track yet
+            }
+            else if (CalibrationStatus != "")
+            {
+                MainThread.BeginInvokeOnMainThread(() =>
+                {
+                    CalibrationStatus = ""; // Hide message
+                });
+            }
+
+            // ADDED: Initialize tracker with calibrated heading on first start
+            if (isTracking && !hasStartedTracking)
+            {
+                parikramaTracker.StartTracking(fusionEngine.CalibratedStartHeading);
+                hasStartedTracking = true;
+            }
+
+            // Update tracking logic
+            bool completed = false;
+            if (isTracking)
+            {
+                completed = parikramaTracker.Update(data.Heading, fusionEngine.IsMoving);
+            }
 
             // Throttle UI updates
             bool shouldUpdate = (DateTime.Now - lastUIUpdate).TotalMilliseconds >= UI_UPDATE_INTERVAL_MS || completed;
@@ -150,7 +190,6 @@ namespace ParikramaCounter.ViewModels
 
             MainThread.BeginInvokeOnMainThread(() =>
             {
-                // Update UI
                 Heading = $"{data.Heading:F1}°";
                 Direction = data.Direction;
                 MovementStatus = fusionEngine.IsMoving ? "🚶 Walking" : "🛑 Stationary";
@@ -158,7 +197,6 @@ namespace ParikramaCounter.ViewModels
                 CircleDirection = parikramaTracker.GetDirection();
                 DistanceInCircle = parikramaTracker.CurrentDistanceInCircle;
 
-                // Handle completion
                 if (completed)
                 {
                     System.Diagnostics.Debug.WriteLine($"🎉 UI UPDATE: Parikrama #{parikramaTracker.ParikramaCount}");
@@ -169,6 +207,9 @@ namespace ParikramaCounter.ViewModels
 
                     CircleProgress = 0;
                     DistanceInCircle = 0;
+
+                    // Re-initialize for next circle
+                    hasStartedTracking = false;
 
                     if (parikramaTracker.IsTargetReached && !TargetReached)
                     {
@@ -214,11 +255,23 @@ namespace ParikramaCounter.ViewModels
         private void StartStop()
         {
             if (IsTracking)
-                sensorService.Stop();
+            {
+                // Stop tracking (but keep sensors running for calibration)
+                IsTracking = false;
+                hasStartedTracking = false;
+            }
             else
-                sensorService.Start();
+            {
+                // Check if calibrated
+                if (!fusionEngine.IsCalibrated)
+                {
+                    CalibrationStatus = "⚠️ Please wait, calibrating...";
+                    return;
+                }
 
-            IsTracking = !IsTracking;
+                // Start tracking
+                IsTracking = true;
+            }
         }
 
         private void Reset()
@@ -230,6 +283,7 @@ namespace ParikramaCounter.ViewModels
             MovementStatus = "Stationary";
             CircleProgress = 0;
             DistanceInCircle = 0;
+            hasStartedTracking = false;
         }
 
         public event PropertyChangedEventHandler PropertyChanged;

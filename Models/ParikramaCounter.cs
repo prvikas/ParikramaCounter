@@ -14,8 +14,6 @@ namespace ParikramaCounter.Models
         private int movementCount = 0;
         private int debugCounter = 0;
         private int lastProgressMilestone = 0;
-
-        // ADDED: Track if we're near completion to prevent false resets
         private bool nearCompletion = false;
 
         public int ParikramaCount { get; private set; }
@@ -25,6 +23,19 @@ namespace ParikramaCounter.Models
 
         public bool IsTargetReached => ParikramaCount >= TargetParikramaCount;
         public int RemainingParikramas => Math.Max(0, TargetParikramaCount - ParikramaCount);
+
+        // ADDED: Initialize with calibrated heading
+        public void StartTracking(double calibratedHeading)
+        {
+            if (startHeading == null)
+            {
+                startHeading = calibratedHeading;
+                lastHeading = calibratedHeading;
+                isActive = true;
+                startTime = DateTime.Now;
+                System.Diagnostics.Debug.WriteLine($"🎯 TRACKING STARTED: {calibratedHeading:F1}° (pre-calibrated)");
+            }
+        }
 
         public bool Update(double currentHeading, bool isMoving)
         {
@@ -41,14 +52,9 @@ namespace ParikramaCounter.Models
             debugCounter = 0;
             movementCount++;
 
+            // If not started yet, can't track
             if (startHeading == null)
             {
-                startHeading = currentHeading;
-                lastHeading = currentHeading;
-                isActive = true;
-                startTime = DateTime.Now;
-                nearCompletion = false; // RESET
-                System.Diagnostics.Debug.WriteLine($"🎯 START: {currentHeading:F1}°");
                 return false;
             }
 
@@ -57,6 +63,7 @@ namespace ParikramaCounter.Models
             if (delta > 180) delta -= 360;
             if (delta < -180) delta += 360;
 
+            // Ignore tiny changes
             if (Math.Abs(delta) < 0.3)
             {
                 lastHeading = currentHeading;
@@ -76,14 +83,12 @@ namespace ParikramaCounter.Models
 
             double absRotation = Math.Abs(totalRotation);
 
-            // ADDED: Mark when near completion (90%+)
             if (absRotation >= 320 && !nearCompletion)
             {
                 nearCompletion = true;
                 System.Diagnostics.Debug.WriteLine($"⚠️ APPROACHING COMPLETION: {absRotation:F1}°");
             }
 
-            // Log progress milestones
             int currentMilestone = (int)(CircleProgress / 10);
             if (currentMilestone > lastProgressMilestone)
             {
@@ -91,7 +96,6 @@ namespace ParikramaCounter.Models
                 System.Diagnostics.Debug.WriteLine($"📐 Progress: {CircleProgress:F0}% | Total: {totalRotation:F1}° | Distance: {CurrentDistanceInCircle:F1}m");
             }
 
-            // FIXED: Check completion in range 340-400 (allow overshoot to 400°)
             if (absRotation >= 340 && absRotation <= 400)
             {
                 double duration = (DateTime.Now - startTime).TotalSeconds;
@@ -105,7 +109,6 @@ namespace ParikramaCounter.Models
                 System.Diagnostics.Debug.WriteLine($"   Movements: {movementCount}");
                 System.Diagnostics.Debug.WriteLine($"   Direction: {GetDirection()}");
 
-                // RELAXED validation
                 if (IsValidParikrama(duration))
                 {
                     ParikramaCount++;
@@ -122,9 +125,7 @@ namespace ParikramaCounter.Models
                     System.Diagnostics.Debug.WriteLine($"❌ INVALID (validation failed)");
                     System.Diagnostics.Debug.WriteLine("========================================");
 
-                    // CHANGED: Don't reset immediately if near completion
-                    // Give user a few more seconds to complete properly
-                    if (absRotation > 380 || duration > 120) // Only reset if way over or timeout
+                    if (absRotation > 380 || duration > 120)
                     {
                         System.Diagnostics.Debug.WriteLine($"⚠️ FORCED RESET (overshoot or timeout)");
                         ResetCircle();
@@ -138,7 +139,6 @@ namespace ParikramaCounter.Models
                 }
             }
 
-            // ADDED: Force reset if going way over 400° (prevent infinite accumulation)
             if (absRotation > 420)
             {
                 System.Diagnostics.Debug.WriteLine($"⚠️ OVERSHOOT! Resetting at {absRotation:F1}°");
@@ -150,7 +150,6 @@ namespace ParikramaCounter.Models
 
         private bool IsValidParikrama(double duration)
         {
-            // RELAXED: Minimum duration from 10s to 8s
             if (duration < 8)
             {
                 System.Diagnostics.Debug.WriteLine($"   ❌ Too fast: {duration:F1}s < 8s");
@@ -163,14 +162,12 @@ namespace ParikramaCounter.Models
                 return false;
             }
 
-            // RELAXED: Minimum movements from 20 to 15
             if (movementCount < 15)
             {
                 System.Diagnostics.Debug.WriteLine($"   ❌ Too few movements: {movementCount} < 15");
                 return false;
             }
 
-            // RELAXED: Minimum distance from 15m to 12m
             if (CurrentDistanceInCircle < 12.0)
             {
                 System.Diagnostics.Debug.WriteLine($"   ❌ Too short: {CurrentDistanceInCircle:F1}m < 12m");
@@ -183,13 +180,6 @@ namespace ParikramaCounter.Models
                 return false;
             }
 
-            // REMOVED: Direction confidence check (too strict)
-            // if (rotationDirection == 0)
-            // {
-            //     System.Diagnostics.Debug.WriteLine($"   ❌ Direction not determined");
-            //     return false;
-            // }
-
             System.Diagnostics.Debug.WriteLine($"   ✅ All validations passed!");
             return true;
         }
@@ -198,7 +188,7 @@ namespace ParikramaCounter.Models
         {
             System.Diagnostics.Debug.WriteLine($"🔄 RESETTING: {totalRotation:F1}° → 0°");
 
-            startHeading = null;
+            startHeading = null; // Allow re-initialization with new calibrated heading
             totalRotation = 0;
             rotationDirection = 0;
             isActive = false;
@@ -226,12 +216,6 @@ namespace ParikramaCounter.Models
         {
             TargetParikramaCount = Math.Max(1, target);
             System.Diagnostics.Debug.WriteLine($"🎯 Target set to: {TargetParikramaCount}");
-        }
-
-        public void ForceIncrement()
-        {
-            ParikramaCount++;
-            System.Diagnostics.Debug.WriteLine($"⚡ FORCED INCREMENT: {ParikramaCount}");
         }
     }
 }
