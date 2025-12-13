@@ -25,6 +25,7 @@ namespace ParikramaCounter
 
 #if DEBUG
             builder.Logging.AddDebug();
+//            builder.Services.AddSingleton<ISensorService, MockSensorService>(); // For testing
 #endif
 
             // Register platform-specific sensor service
@@ -43,8 +44,10 @@ namespace ParikramaCounter
             builder.Services.AddTransient<Views.TrackingPage>();
             builder.Services.AddTransient<Views.DiagnosticsPage>();
             builder.Services.AddTransient<Views.SettingsPage>();
+            builder.Services.AddSingleton<TempleProfileService>();
 
             return builder.Build();
         }
     }
 }
+
