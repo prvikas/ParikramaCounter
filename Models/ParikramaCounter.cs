@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 
 namespace ParikramaCounter.Models
@@ -8,17 +8,42 @@ namespace ParikramaCounter.Models
         private readonly HeadingTracker headingTracker = new HeadingTracker();
         private readonly Queue<int> recentSteps = new Queue<int>(10);
 
+        // Fix #5: boolean flag instead of == 0 guard, which breaks when step count
+        // genuinely starts at zero or resets between parikramas.
+        private bool hasSetStartSteps = false;
         private int stepsAtStart = 0;
-        private int minimumStepsRequired = 30; // Minimum steps for valid parikrama
-        private DateTime lastValidationTime = DateTime.Now;
+        private int minimumStepsRequired = 30;
+
+        // Milestone ranges (in degrees of CumulativeChange, not GetProgress %).
+        // Using ranges rather than exact thresholds because a walking compass heading
+        // accumulates unevenly — a person can cross or skip a single degree point
+        // between sensor samples, but will always pass through a degree range.
+        //
+        // 3rd-side buzz:     fire once walker enters 250°–290° window
+        // Approaching-start: fire once walker enters 320°–350° window
+        // These are intentionally conservative: the lower bound is generous enough
+        // to catch slow walkers; the upper bound stops the buzz firing again if
+        // sensors briefly read above the window before completion.
+        private const double THIRD_SIDE_MIN = 250.0;
+        private const double THIRD_SIDE_MAX = 290.0;
+        private const double APPROACHING_START_MIN = 320.0;
+        private const double APPROACHING_START_MAX = 350.0;
+
+        // Each quadrant (side) is 90° ± 15° tolerance.
+        // SidesCompleted goes 0→1→2→3→4 as CumulativeChange crosses each boundary.
+        private const double DEGREES_PER_SIDE = 90.0;
 
         public int ParikramaCount { get; private set; }
         public int TargetParikramaCount { get; set; } = 7;
+
+        // Progress as 0–100 percentage for progress bar display
         public double CurrentProgress => headingTracker.GetProgress();
+
         public int CurrentStepsInCircle { get; private set; }
 
-        // SidesCompleted: 0-4 quadrant tracking based on heading progress
-        public int SidesCompleted => (int)(headingTracker.GetProgress() / 90.0);
+        // Fix #2: use CumulativeChange (degrees) divided by 90, clamped to 4.
+        // Previously used GetProgress() (0–100%) / 90 which could only return 0 or 1.
+        public int SidesCompleted => Math.Min(4, (int)(headingTracker.CumulativeChange / DEGREES_PER_SIDE));
 
         public bool IsTargetReached => ParikramaCount >= TargetParikramaCount;
         public int RemainingParikramas => Math.Max(0, TargetParikramaCount - ParikramaCount);
@@ -26,10 +51,10 @@ namespace ParikramaCounter.Models
             ? (double)ParikramaCount / TargetParikramaCount * 100
             : 0;
 
-        // Fired when the walker completes the 3rd side (270° mark)
+        // Fired once when walker enters the 3rd-side range (250°–290°)
         public event Action OnThirdSideCompleted;
 
-        // Fired when the walker is within ~30° of completing the circle
+        // Fired once when walker enters the approaching-start range (320°–350°)
         public event Action OnApproachingStart;
 
         private bool thirdSideFired = false;
@@ -37,51 +62,55 @@ namespace ParikramaCounter.Models
 
         public bool CheckAndUpdateParikrama(double currentHeading, int totalSteps, bool isMoving, DateTime timestamp)
         {
-            // Only update when actually moving
+            // Only process heading when walker is actually moving
             if (!isMoving)
                 return false;
 
-            // Update heading tracker
             headingTracker.Update(currentHeading, timestamp);
 
-            // Fire vibration events at meaningful progress milestones
-            double progress = headingTracker.GetProgress();
-            if (!thirdSideFired && progress >= 270.0)
+            // Fix #1 & #3: use CumulativeChange (degrees) for milestone comparisons,
+            // not GetProgress() (%) which was compared against degree-valued thresholds.
+            // Fix: use ranges, not exact points — a sensor tick can skip over a single degree.
+            double cumulative = headingTracker.CumulativeChange;
+
+            if (!thirdSideFired && cumulative >= THIRD_SIDE_MIN && cumulative <= THIRD_SIDE_MAX)
             {
                 thirdSideFired = true;
                 OnThirdSideCompleted?.Invoke();
             }
-            if (!approachingStartFired && progress >= 330.0)
+
+            if (!approachingStartFired && cumulative >= APPROACHING_START_MIN && cumulative <= APPROACHING_START_MAX)
             {
                 approachingStartFired = true;
                 OnApproachingStart?.Invoke();
             }
 
-            // Track steps in current circle
-            if (stepsAtStart == 0)
+            // Fix #5: use boolean flag so step baseline is set correctly even when
+            // totalSteps starts at 0, and correctly resets between parikramas.
+            if (!hasSetStartSteps)
             {
                 stepsAtStart = totalSteps;
+                hasSetStartSteps = true;
             }
             CurrentStepsInCircle = totalSteps - stepsAtStart;
 
-            // Validate movement pattern
+            // Track rolling window of cumulative step counts for consistency check
             recentSteps.Enqueue(totalSteps);
             if (recentSteps.Count > 10)
                 recentSteps.Dequeue();
 
-            // Check if completed a full 360° rotation
+            // Check for full rotation within the valid window (340°–400°)
             if (headingTracker.HasCompletedFullRotation())
             {
-                // Validate it's a real parikrama
                 if (IsValidParikrama())
                 {
                     ParikramaCount++;
                     ResetCircle();
-                    return true; // Trigger vibration
+                    return true;
                 }
                 else
                 {
-                    // Invalid parikrama (e.g., spinning in place)
+                    // Rotation detected but not a valid walk (spinning, too few steps, etc.)
                     ResetCircle();
                     return false;
                 }
@@ -92,33 +121,40 @@ namespace ParikramaCounter.Models
 
         private bool IsValidParikrama()
         {
-            // Must have walked minimum steps
+            // Must have walked a minimum number of steps
             if (CurrentStepsInCircle < minimumStepsRequired)
                 return false;
 
-            // Check if steps are distributed over time (not all at once)
+            // Check that steps were distributed across the walk (not all at once).
+            // Fix: allow up to 3 consecutive samples with no new steps — a walker
+            // can briefly pause mid-circle without the whole parikrama being invalidated.
+            // The original stepDelta < 1 on every sample was too strict.
             if (recentSteps.Count >= 5)
             {
                 var stepsList = new List<int>(recentSteps);
-                bool hasConsistentMovement = true;
+                int consecutiveIdle = 0;
+                const int maxConsecutiveIdle = 3;
 
                 for (int i = 1; i < stepsList.Count; i++)
                 {
                     int stepDelta = stepsList[i] - stepsList[i - 1];
-                    // Should have some steps in each interval
                     if (stepDelta < 1)
                     {
-                        hasConsistentMovement = false;
-                        break;
+                        consecutiveIdle++;
+                        if (consecutiveIdle > maxConsecutiveIdle)
+                            return false;
+                    }
+                    else
+                    {
+                        consecutiveIdle = 0;
                     }
                 }
-
-                if (!hasConsistentMovement)
-                    return false;
             }
 
-            // Must have reasonable direction confidence
-            if (headingTracker.DirectionConfidence < 50)
+            // Lowered from 50 → 30: real Parikrama paths are not perfect circles;
+            // GPS/magnetometer noise in open courtyards degrades confidence.
+            // 30 still blocks erratic spinning or direction reversals.
+            if (headingTracker.DirectionConfidence < 30)
                 return false;
 
             return true;
@@ -128,6 +164,7 @@ namespace ParikramaCounter.Models
         {
             headingTracker.Reset();
             stepsAtStart = 0;
+            hasSetStartSteps = false;  // Fix #5: reset the flag too
             CurrentStepsInCircle = 0;
             recentSteps.Clear();
             thirdSideFired = false;
