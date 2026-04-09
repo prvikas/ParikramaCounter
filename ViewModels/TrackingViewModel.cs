@@ -116,10 +116,10 @@ namespace ParikramaCounter.ViewModels
             get => selectedPresetIndex;
             set
             {
+                if (value < 0 || value >= PresetTargets.Count) return;
                 selectedPresetIndex = value;
                 OnPropertyChanged();
-                if (value >= 0 && value < PresetTargets.Count)
-                    TargetParikrama = PresetTargets[value];
+                TargetParikrama = PresetTargets[value];
             }
         }
 
@@ -182,6 +182,8 @@ namespace ParikramaCounter.ViewModels
         public ICommand ToggleCountModeCommand { get; }
         public ICommand SetCustomTargetCommand { get; }
 
+        private PropertyChangedEventHandler settingsChangedHandler;
+
         // ── Constructor ───────────────────────────────────────────────────────────
 
         public TrackingViewModel(ISensorService sensorService, SensorFusionEngine fusionEngine, SettingsViewModel settings)
@@ -194,7 +196,7 @@ namespace ParikramaCounter.ViewModels
             parikramaTracker.OnThirdSideCompleted += OnThirdSideCompleted;
             parikramaTracker.OnApproachingStart   += OnApproachingStart;
 
-            settings.PropertyChanged += (_, e) =>
+            settingsChangedHandler = (_, e) =>
             {
                 if (e.PropertyName == nameof(SettingsViewModel.IsDescendingMode))
                 {
@@ -202,6 +204,7 @@ namespace ParikramaCounter.ViewModels
                     OnPropertyChanged(nameof(DisplayCount));
                 }
             };
+            settings.PropertyChanged += settingsChangedHandler;
 
             StartStopCommand       = new Command(StartStop);
             ResetCommand           = new Command(Reset);
@@ -217,8 +220,11 @@ namespace ParikramaCounter.ViewModels
             targetParikrama = restoredTarget;
             parikramaTracker.TargetParikramaCount = restoredTarget;
 
-            // Sync picker selection to restored target (−1 = custom if not in presets)
-            selectedPresetIndex = PresetTargets.IndexOf(restoredTarget);
+            // Sync picker selection to restored target.
+            // Default to index 0 (value 1) if the saved target isn't in the preset list,
+            // to avoid SelectedIndex = -1 which crashes on Android Picker.
+            int presetIdx = PresetTargets.IndexOf(restoredTarget);
+            selectedPresetIndex = presetIdx >= 0 ? presetIdx : 0;
 
             ParikramaCount = restoredCount;
             CountModeLabel = settings.IsDescendingMode ? "Descending" : "Ascending";
@@ -237,10 +243,14 @@ namespace ParikramaCounter.ViewModels
                 Steps          = data.Steps;
                 MovementStatus = fusionEngine.IsMoving ? "🚶 Walking" : "🛑 Stationary";
 
-                CircleProgress  = parikramaTracker.CurrentProgress;
-                CircleDirection = parikramaTracker.GetDirection();
-                StepsInCircle   = parikramaTracker.CurrentStepsInCircle;
-                SidesInfo       = $"{parikramaTracker.SidesCompleted}/{TotalSides} sides";
+                // Only update parikrama progress display when actively tracking
+                if (isTracking)
+                {
+                    CircleProgress  = parikramaTracker.CurrentProgress;
+                    CircleDirection = parikramaTracker.GetDirection();
+                    StepsInCircle   = parikramaTracker.CurrentStepsInCircle;
+                    SidesInfo       = $"{parikramaTracker.SidesCompleted}/{TotalSides} sides";
+                }
 
                 if (!isTracking || !settings.AutoCountingEnabled) return;
 
@@ -290,8 +300,8 @@ namespace ParikramaCounter.ViewModels
         {
             if (ParikramaCount <= 0) return;
             ParikramaCount--;
-            TargetReached = parikramaTracker.IsTargetReached;
-            parikramaTracker.ManualSetCount(parikramaCount);
+            parikramaTracker.ManualSetCount(parikramaCount); // update tracker first
+            TargetReached = parikramaTracker.IsTargetReached; // then read state
         }
 
         private void HandleCompletion()
@@ -301,8 +311,10 @@ namespace ParikramaCounter.ViewModels
                 TargetReached = true;
                 _ = VibrateForTargetCompletionAsync();
             }
-            else if (!TargetReached)
+            else if (!TargetReached && parikramaCount > 1)
             {
+                // Only vibrate for intermediate completions after the first count,
+                // so the first manual tap does not trigger an unexpected vibration
                 VibrateForParikramaCompletion();
             }
         }
@@ -410,6 +422,7 @@ namespace ParikramaCounter.ViewModels
             sensorService.SensorDataReceived      -= OnSensorDataReceived;
             parikramaTracker.OnThirdSideCompleted -= OnThirdSideCompleted;
             parikramaTracker.OnApproachingStart   -= OnApproachingStart;
+            settings.PropertyChanged              -= settingsChangedHandler;
         }
 
         // ── INotifyPropertyChanged ────────────────────────────────────────────────

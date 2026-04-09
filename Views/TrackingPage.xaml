@@ -46,27 +46,14 @@
                     <Label Text="Target pradhakshinas" FontSize="13"
                            TextColor="#94a3b8" HorizontalOptions="Center"/>
 
-                    <!-- Preset picker: traditional counts -->
-                    <Picker Title="Choose preset"
+                    <!-- Preset picker bound to PresetTargets — single source of truth -->
+                    <Picker x:Name="PresetPicker"
+                            Title="Choose preset"
                             SelectedIndex="{Binding SelectedPresetIndex}"
+                            ItemsSource="{Binding PresetTargets}"
                             TextColor="White"
                             TitleColor="#64748b"
-                            BackgroundColor="#0f172a">
-                        <Picker.Items>
-                            <x:String>1</x:String>
-                            <x:String>3</x:String>
-                            <x:String>5</x:String>
-                            <x:String>7</x:String>
-                            <x:String>9</x:String>
-                            <x:String>11</x:String>
-                            <x:String>12</x:String>
-                            <x:String>21</x:String>
-                            <x:String>27</x:String>
-                            <x:String>54</x:String>
-                            <x:String>63</x:String>
-                            <x:String>108</x:String>
-                        </Picker.Items>
-                    </Picker>
+                            BackgroundColor="#0f172a"/>
 
                     <!-- Custom target entry -->
                     <Grid ColumnDefinitions="*,Auto" ColumnSpacing="10">
@@ -81,8 +68,7 @@
                                ReturnCommand="{Binding SetCustomTargetCommand}"
                                ReturnCommandParameter="{Binding Text, Source={x:Reference CustomTargetEntry}}"/>
                         <Button Text="Set"
-                                Command="{Binding SetCustomTargetCommand}"
-                                CommandParameter="{Binding Text, Source={x:Reference CustomTargetEntry}}"
+                                Clicked="OnSetCustomTargetClicked"
                                 BackgroundColor="#6366f1" TextColor="White"
                                 WidthRequest="60" HeightRequest="44" CornerRadius="10"
                                 Grid.Column="1"/>

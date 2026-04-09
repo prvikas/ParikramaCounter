@@ -12,7 +12,6 @@ namespace ParikramaCounter.Models
         private double dynamicThreshold = 1.5;
         private double lastPeakValue = 0;
         private DateTime lastStepTime = DateTime.MinValue;
-        private readonly int minStepIntervalMs = 300;
         private readonly int maxStepIntervalMs = 2000;
 
         // Motion detection

@@ -11,64 +11,56 @@ namespace ParikramaCounter.ViewModels
     {
         private readonly SensorFusionEngine fusionEngine;
 
-        // ── Step detection ────────────────────────────────────────────────────────
-        private int stepThreshold   = 120;
-        private int minStepInterval = 250;
-
-        // ── Vibration durations (ms) ──────────────────────────────────────────────
+        // All int backing fields — double pass-through properties used for Slider binding
+        private int stepThreshold             = 120;
+        private int minStepInterval           = 250;
         private int thirdSideVibrationMs      = 400;
-        private int approachingStartVibrationMs = 200;
+        private int approachingStartVibMs     = 200;
         private int completionVibrationMs     = 500;
         private int targetVibrationMs         = 300;
         private int targetVibrationCount      = 3;
         private bool enableVibrations         = true;
-
-        // ── Counting mode ─────────────────────────────────────────────────────────
-        private bool isDescendingMode = false;  // false = ascending (default)
-
-        // ── Auto sensor counting ──────────────────────────────────────────────────
-        private bool autoCountingEnabled = true;
-
-        // ── Calibration ───────────────────────────────────────────────────────────
+        private bool isDescendingMode         = false;
+        private bool autoCountingEnabled      = true;
         private bool isCalibrating;
         private double calibrationProgress;
 
-        // ── Properties ────────────────────────────────────────────────────────────
+        // ── int properties (authoritative) ───────────────────────────────────────
 
         public int StepThreshold
         {
             get => stepThreshold;
-            set { stepThreshold = value; OnPropertyChanged(); fusionEngine?.UpdateStepThreshold(value); Save(); }
+            set { stepThreshold = value; OnPropertyChanged(); OnPropertyChanged(nameof(StepThresholdDouble)); fusionEngine?.UpdateStepThreshold(value); Save(); }
         }
 
         public int MinStepInterval
         {
             get => minStepInterval;
-            set { minStepInterval = value; OnPropertyChanged(); fusionEngine?.UpdateMinStepInterval(value); Save(); }
+            set { minStepInterval = value; OnPropertyChanged(); OnPropertyChanged(nameof(MinStepIntervalDouble)); fusionEngine?.UpdateMinStepInterval(value); Save(); }
         }
 
         public int ThirdSideVibrationMs
         {
             get => thirdSideVibrationMs;
-            set { thirdSideVibrationMs = value; OnPropertyChanged(); Save(); }
+            set { thirdSideVibrationMs = value; OnPropertyChanged(); OnPropertyChanged(nameof(ThirdSideVibrationMsDouble)); Save(); }
         }
 
         public int ApproachingStartVibrationMs
         {
-            get => approachingStartVibrationMs;
-            set { approachingStartVibrationMs = value; OnPropertyChanged(); Save(); }
+            get => approachingStartVibMs;
+            set { approachingStartVibMs = value; OnPropertyChanged(); OnPropertyChanged(nameof(ApproachingStartVibrationMsDouble)); Save(); }
         }
 
         public int CompletionVibrationMs
         {
             get => completionVibrationMs;
-            set { completionVibrationMs = value; OnPropertyChanged(); Save(); }
+            set { completionVibrationMs = value; OnPropertyChanged(); OnPropertyChanged(nameof(CompletionVibrationMsDouble)); Save(); }
         }
 
         public int TargetVibrationMs
         {
             get => targetVibrationMs;
-            set { targetVibrationMs = value; OnPropertyChanged(); Save(); }
+            set { targetVibrationMs = value; OnPropertyChanged(); OnPropertyChanged(nameof(TargetVibrationMsDouble)); Save(); }
         }
 
         public int TargetVibrationCount
@@ -77,12 +69,53 @@ namespace ParikramaCounter.ViewModels
             set { targetVibrationCount = Math.Max(1, Math.Min(10, value)); OnPropertyChanged(); OnPropertyChanged(nameof(TargetVibrationCountDouble)); Save(); }
         }
 
-        // Slider requires double — use this for two-way binding to avoid type coercion warnings
+        // ── double pass-throughs for Slider two-way binding ───────────────────────
+        // Slider.Value is always double. Binding int directly causes InvalidCastException
+        // on iOS and binding warnings on Android when the slider fires value-changed.
+
+        public double StepThresholdDouble
+        {
+            get => stepThreshold;
+            set { StepThreshold = (int)Math.Round(value); }
+        }
+
+        public double MinStepIntervalDouble
+        {
+            get => minStepInterval;
+            set { MinStepInterval = (int)Math.Round(value); }
+        }
+
+        public double ThirdSideVibrationMsDouble
+        {
+            get => thirdSideVibrationMs;
+            set { ThirdSideVibrationMs = (int)Math.Round(value); }
+        }
+
+        public double ApproachingStartVibrationMsDouble
+        {
+            get => approachingStartVibMs;
+            set { ApproachingStartVibrationMs = (int)Math.Round(value); }
+        }
+
+        public double CompletionVibrationMsDouble
+        {
+            get => completionVibrationMs;
+            set { CompletionVibrationMs = (int)Math.Round(value); }
+        }
+
+        public double TargetVibrationMsDouble
+        {
+            get => targetVibrationMs;
+            set { TargetVibrationMs = (int)Math.Round(value); }
+        }
+
         public double TargetVibrationCountDouble
         {
             get => targetVibrationCount;
             set { TargetVibrationCount = (int)Math.Round(value); }
         }
+
+        // ── bool / calibration properties ────────────────────────────────────────
 
         public bool EnableVibrations
         {
@@ -125,34 +158,32 @@ namespace ParikramaCounter.ViewModels
             Load();
         }
 
-        // ── Persistence ───────────────────────────────────────────────────────────
-
         private void Save()
         {
-            Preferences.Set("StepThreshold",           stepThreshold);
-            Preferences.Set("MinStepInterval",         minStepInterval);
-            Preferences.Set("ThirdSideVibMs",          thirdSideVibrationMs);
-            Preferences.Set("ApproachingVibMs",        approachingStartVibrationMs);
-            Preferences.Set("CompletionVibMs",         completionVibrationMs);
-            Preferences.Set("TargetVibMs",             targetVibrationMs);
-            Preferences.Set("TargetVibCount",          targetVibrationCount);
-            Preferences.Set("EnableVibrations",        enableVibrations);
-            Preferences.Set("IsDescendingMode",        isDescendingMode);
-            Preferences.Set("AutoCountingEnabled",     autoCountingEnabled);
+            Preferences.Set("StepThreshold",       stepThreshold);
+            Preferences.Set("MinStepInterval",     minStepInterval);
+            Preferences.Set("ThirdSideVibMs",      thirdSideVibrationMs);
+            Preferences.Set("ApproachingVibMs",    approachingStartVibMs);
+            Preferences.Set("CompletionVibMs",     completionVibrationMs);
+            Preferences.Set("TargetVibMs",         targetVibrationMs);
+            Preferences.Set("TargetVibCount",      targetVibrationCount);
+            Preferences.Set("EnableVibrations",    enableVibrations);
+            Preferences.Set("IsDescendingMode",    isDescendingMode);
+            Preferences.Set("AutoCountingEnabled", autoCountingEnabled);
         }
 
         private void Load()
         {
-            stepThreshold             = Preferences.Get("StepThreshold",       120);
-            minStepInterval           = Preferences.Get("MinStepInterval",     250);
-            thirdSideVibrationMs      = Preferences.Get("ThirdSideVibMs",      400);
-            approachingStartVibrationMs = Preferences.Get("ApproachingVibMs",  200);
-            completionVibrationMs     = Preferences.Get("CompletionVibMs",     500);
-            targetVibrationMs         = Preferences.Get("TargetVibMs",         300);
-            targetVibrationCount      = Preferences.Get("TargetVibCount",        3);
-            enableVibrations          = Preferences.Get("EnableVibrations",    true);
-            isDescendingMode          = Preferences.Get("IsDescendingMode",   false);
-            autoCountingEnabled       = Preferences.Get("AutoCountingEnabled", true);
+            stepThreshold         = Preferences.Get("StepThreshold",       120);
+            minStepInterval       = Preferences.Get("MinStepInterval",     250);
+            thirdSideVibrationMs  = Preferences.Get("ThirdSideVibMs",      400);
+            approachingStartVibMs = Preferences.Get("ApproachingVibMs",    200);
+            completionVibrationMs = Preferences.Get("CompletionVibMs",     500);
+            targetVibrationMs     = Preferences.Get("TargetVibMs",         300);
+            targetVibrationCount  = Preferences.Get("TargetVibCount",        3);
+            enableVibrations      = Preferences.Get("EnableVibrations",    true);
+            isDescendingMode      = Preferences.Get("IsDescendingMode",   false);
+            autoCountingEnabled   = Preferences.Get("AutoCountingEnabled", true);
 
             fusionEngine?.UpdateStepThreshold(stepThreshold);
             fusionEngine?.UpdateMinStepInterval(minStepInterval);

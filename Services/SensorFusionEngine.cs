@@ -1,5 +1,8 @@
 using System;
 using ParikramaCounter.Models;
+#if ANDROID
+using ParikramaCounter.Platforms.Android;
+#endif
 
 namespace ParikramaCounter.Services
 {
