@@ -52,7 +52,7 @@
                 <VerticalStackLayout Spacing="10">
                     <Label Text="{Binding Heading}" FontSize="48" HorizontalOptions="Center" TextColor="#3b82f6" FontAttributes="Bold"/>
                     <Label Text="{Binding Direction}" FontSize="32" HorizontalOptions="Center" TextColor="White"/>
-                    <Label Text="{Binding Accuracy, StringFormat='Accuracy: {0}'}" FontSize="14" HorizontalOptions="Center" TextColor="#94a3b8"/>
+                    
                 </VerticalStackLayout>
             </Frame>
             <!-- Current Circle Progress -->

@@ -2,28 +2,20 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-    <!-- ... other keys ... -->
-    
-    <!-- Motion & Fitness -->
+    <!-- Fix #9: single NSMotionUsageDescription — duplicate key was silently
+         discarding the pedometer description. One key covers both motion and pedometer. -->
     <key>NSMotionUsageDescription</key>
-    <string>We need access to motion sensors to count your steps and detect direction during Parikrama.</string>
-    
-    <!-- Pedometer -->
-    <key>NSMotionUsageDescription</key>
-    <string>We need access to your step data to accurately count circumambulations.</string>
-    
-    <!-- Location (if using GPS for additional accuracy) -->
+    <string>ParikramaCounter needs motion and step sensors to count circumambulations and detect walking direction.</string>
+
+    <!-- Fix #10: removed NSLocationAlwaysUsageDescription — app only requests
+         LocationWhenInUse so Always description is unused and risks App Store rejection. -->
     <key>NSLocationWhenInUseUsageDescription</key>
-    <string>We need your location to improve compass accuracy during outdoor Parikrama.</string>
-    
-    <key>NSLocationAlwaysUsageDescription</key>
-    <string>We need your location to track Parikrama even when the app is in the background.</string>
-    
-    <!-- Background Modes (optional for continuous tracking) -->
-    <key>UIBackgroundModes</key>
-    <array>
-        <string>location</string>
-        <string>processing</string>
-    </array>
+    <string>Your location helps improve compass accuracy during outdoor Parikrama.</string>
+
+    <!-- Fix #11: removed UIBackgroundModes entirely.
+         'location' requires continuous GPS (not used) and 'processing' requires a
+         registered BGProcessingTask (not implemented). Both cause App Store rejection
+         when declared without matching implementation. -->
+
 </dict>
 </plist>

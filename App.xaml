@@ -1,7 +1,8 @@
-﻿<?xml version = "1.0" encoding = "UTF-8" ?>
+<?xml version = "1.0" encoding = "UTF-8" ?>
 <Application xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
              xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
              xmlns:local="clr-namespace:ParikramaCounter"
+             xmlns:converters="clr-namespace:ParikramaCounter.Converters"
              x:Class="ParikramaCounter.App">
     <Application.Resources>
         <ResourceDictionary>
@@ -9,6 +10,10 @@
                 <ResourceDictionary Source="Resources/Styles/Colors.xaml" />
                 <ResourceDictionary Source="Resources/Styles/Styles.xaml" />
             </ResourceDictionary.MergedDictionaries>
+
+            <!-- Fix #18: register InverseBoolConverter globally so all pages can
+                 use {StaticResource InverseBoolConverter} without crashing. -->
+            <converters:InverseBoolConverter x:Key="InverseBoolConverter" />
         </ResourceDictionary>
     </Application.Resources>
 </Application>
