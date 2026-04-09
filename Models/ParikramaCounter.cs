@@ -99,7 +99,8 @@ namespace ParikramaCounter.Models
             if (recentSteps.Count > 10)
                 recentSteps.Dequeue();
 
-            // Check for full rotation within the valid window (340°–400°)
+            // Check for full rotation — threshold is 340° with no upper bound.
+            // The accumulator is unbounded; ResetCircle() fires immediately after detection.
             if (headingTracker.HasCompletedFullRotation())
             {
                 if (IsValidParikrama())

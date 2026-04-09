@@ -51,20 +51,16 @@ namespace ParikramaCounter.Models
             // Update dynamic threshold
             double mean = accelerationHistory.Average();
             double stdDev = Math.Sqrt(variance);
-            dynamicThreshold = mean + (1.8 * stdDev); // Higher threshold for accuracy
+            dynamicThreshold = (mean + (1.8 * stdDev)) * thresholdMultiplier;
 
             var now = DateTime.Now;
 
-            // Reset on idle
             if ((now - lastStepTime).TotalMilliseconds > maxStepIntervalMs)
-            {
                 lastPeakValue = 0;
-            }
 
-            // Peak detection with stricter validation
             bool isPeak = accelerationMagnitude > dynamicThreshold &&
-                         accelerationMagnitude > lastPeakValue * 1.1 && // 10% higher than last peak
-                         (now - lastStepTime).TotalMilliseconds > minStepIntervalMs &&
+                         accelerationMagnitude > lastPeakValue * 1.1 &&
+                         (now - lastStepTime).TotalMilliseconds > minStepIntervalOverride &&
                          IsValidStepPattern();
 
             if (isPeak)
@@ -115,6 +111,13 @@ namespace ParikramaCounter.Models
             double avgInterval = intervals.Average();
             return avgInterval >= 250 && avgInterval <= 1200;
         }
+
+        // Fix #4: allow SettingsViewModel to propagate slider values to live detection
+        private double thresholdMultiplier = 1.0;
+        private int minStepIntervalOverride = 300;
+
+        public void SetThresholdMultiplier(double multiplier) => thresholdMultiplier = Math.Max(0.1, multiplier);
+        public void SetMinStepInterval(int ms) => minStepIntervalOverride = Math.Max(100, ms);
 
         public void Reset()
         {

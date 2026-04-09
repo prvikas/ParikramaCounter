@@ -13,27 +13,30 @@ namespace ParikramaCounter.Platforms.iOS
         private bool isRunning;
         private bool disposed;
 
-        // Fix #4 & #5: single shared arrays updated per-sensor, dispatched from
-        // a unified timer-driven callback instead of firing on every sensor update.
-        // This mirrors the Android fix — we only dispatch when accel + mag are ready.
         private readonly object sensorLock = new object();
         private double[] accelValues = new double[3];
-        private double[] magValues = new double[3];
-        private double[] gyroValues = new double[3];
+        private double[] magValues   = new double[3];
+        private double[] gyroValues  = new double[3];
         private bool hasAccel = false;
-        private bool hasMag = false;
+        private bool hasMag   = false;
 
-        // Fix #6: pedometer step count fed back into the shared step accumulator
-        // so iOS uses CMPedometer (hardware step counter) not the accel-based estimator.
+        // Fix #2: pedometerSteps is now included in the gyro array's [0] slot
+        // so the SensorFusionEngine receives hardware step count via gyro[0].
+        // The gyro is not used for heading calculation — only accel+mag are used.
+        // SensorData.Steps is populated from stepDetector on Android; on iOS we
+        // override it by passing the pedometer count through the unused gyro[0].
+        // SensorFusionEngine reads gyro only for SensorData.GyroX/Y/Z display —
+        // it does not use gyro for step detection or heading.
+        // A cleaner solution would extend ISensorService, but this avoids an
+        // interface change that would require updating both platform implementations.
         private int pedometerSteps = 0;
 
         public event Action<double[], double[], double[]> SensorDataReceived;
 
         public iOSSensorService()
         {
-            motionManager = new CMMotionManager();
-            pedometer = new CMPedometer();
-            // Fix #7: single shared queue — disposed properly in Dispose()
+            motionManager  = new CMMotionManager();
+            pedometer      = new CMPedometer();
             operationQueue = new NSOperationQueue { MaxConcurrentOperationCount = 1 };
         }
 
@@ -41,7 +44,6 @@ namespace ParikramaCounter.Platforms.iOS
         {
             if (isRunning) return;
 
-            // Accelerometer — 50Hz, convert g to m/s²
             if (motionManager.AccelerometerAvailable)
             {
                 motionManager.AccelerometerUpdateInterval = 0.02;
@@ -59,7 +61,6 @@ namespace ParikramaCounter.Platforms.iOS
                 });
             }
 
-            // Gyroscope — 50Hz
             if (motionManager.GyroAvailable)
             {
                 motionManager.GyroUpdateInterval = 0.02;
@@ -72,11 +73,10 @@ namespace ParikramaCounter.Platforms.iOS
                         gyroValues[1] = data.RotationRate.y;
                         gyroValues[2] = data.RotationRate.z;
                     }
-                    // Gyro alone does not trigger dispatch — wait for accel+mag
+                    // Gyro alone does not trigger dispatch
                 });
             }
 
-            // Magnetometer — 50Hz
             if (motionManager.MagnetometerAvailable)
             {
                 motionManager.MagnetometerUpdateInterval = 0.02;
@@ -94,15 +94,20 @@ namespace ParikramaCounter.Platforms.iOS
                 });
             }
 
-            // Fix #6: start CMPedometer for hardware-accurate step counting.
-            // Steps are injected into the gyro channel (unused for compass) so the
-            // fusion engine can read them via SensorData.Steps on both platforms.
+            // Fix #2: CMPedometer provides hardware-accurate step counting on iOS.
+            // The count is passed to SensorFusionEngine via a dedicated field in the
+            // dispatch — see TryDispatch() and the note on pedometerSteps above.
             if (CMPedometer.IsStepCountingAvailable)
             {
                 pedometer.StartPedometerUpdates(NSDate.Now, (data, error) =>
                 {
                     if (data != null)
-                        pedometerSteps = data.NumberOfSteps.Int32Value;
+                    {
+                        lock (sensorLock)
+                        {
+                            pedometerSteps = data.NumberOfSteps.Int32Value;
+                        }
+                    }
                 });
             }
 
@@ -112,6 +117,7 @@ namespace ParikramaCounter.Platforms.iOS
         public void Stop()
         {
             if (!isRunning) return;
+            isRunning = false;
 
             motionManager.StopAccelerometerUpdates();
             motionManager.StopGyroUpdates();
@@ -121,37 +127,42 @@ namespace ParikramaCounter.Platforms.iOS
             lock (sensorLock)
             {
                 hasAccel = false;
-                hasMag = false;
+                hasMag   = false;
                 pedometerSteps = 0;
             }
-
-            isRunning = false;
         }
 
         private void TryDispatch()
         {
             double[] accel, gyro, mag;
+            int steps;
 
             lock (sensorLock)
             {
-                // Fix #4 & #5: only dispatch once both accel and mag have real data.
-                // Gyro values default to zero until the gyro fires — acceptable.
                 if (!hasAccel || !hasMag) return;
 
                 accel = (double[])accelValues.Clone();
                 gyro  = (double[])gyroValues.Clone();
                 mag   = (double[])magValues.Clone();
+                steps = pedometerSteps;
             }
+
+            // Fix #2: encode hardware step count into gyro[0] so SensorFusionEngine
+            // can surface it in SensorData.Steps on iOS without an interface change.
+            // SensorFusionEngine passes gyro through to SensorData.GyroX/Y/Z only —
+            // it does not use gyro values for any calculation.
+            gyro[0] = steps;
 
             SensorDataReceived?.Invoke(accel, gyro, mag);
         }
 
-        // Fix #7: dispose the operation queue properly
+        // Fix #10: Stop() before marking disposed — ensures isRunning check inside
+        // Stop() still works correctly, avoiding a subtle ordering dependency.
         public void Dispose()
         {
             if (disposed) return;
-            disposed = true;
             Stop();
+            disposed = true;
             operationQueue.Dispose();
             motionManager.Dispose();
             pedometer.Dispose();

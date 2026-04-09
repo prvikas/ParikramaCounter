@@ -1,3 +1,4 @@
+using Microsoft.Maui.Controls;
 using ParikramaCounter.ViewModels;
 
 namespace ParikramaCounter
@@ -7,9 +8,6 @@ namespace ParikramaCounter
         private readonly TrackingViewModel trackingViewModel;
         private readonly DiagnosticsViewModel diagnosticsViewModel;
 
-        // Fix #19: MAUI's DI container does not call Dispose() on singleton services.
-        // We inject the IDisposable ViewModels here and release them explicitly when
-        // the application is closing, ensuring sensors stop and events unsubscribe.
         public App(TrackingViewModel trackingVm, DiagnosticsViewModel diagnosticsVm)
         {
             InitializeComponent();
@@ -19,14 +17,19 @@ namespace ParikramaCounter
 
         protected override Window CreateWindow(IActivationState? activationState)
         {
-            return new Window(new AppShell());
-        }
+            var window = new Window(new AppShell());
 
-        protected override void CleanUp()
-        {
-            trackingViewModel?.Dispose();
-            diagnosticsViewModel?.Dispose();
-            base.CleanUp();
+            // Fix #15: CleanUp() is not a real MAUI Application override and is
+            // never called on iOS where the OS kills apps without lifecycle hooks.
+            // Window.Destroying fires reliably on both Android and iOS when the
+            // app window is closed or the process is about to be terminated.
+            window.Destroying += (_, _) =>
+            {
+                trackingViewModel?.Dispose();
+                diagnosticsViewModel?.Dispose();
+            };
+
+            return window;
         }
     }
 }

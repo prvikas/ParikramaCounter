@@ -23,9 +23,10 @@ namespace ParikramaCounter.Platforms.Android
 
         // Fix #1: track which sensors have fired at least once so we don't
         // dispatch with stale zero-arrays for sensors that haven't updated yet
+        // hasGyro removed — gyro is optional and the gate only needs accel+mag
         private bool hasAccel = false;
-        private bool hasGyro = false;
         private bool hasMag = false;
+        private bool isRunning = false;
 
         public event Action<double[], double[], double[]> SensorDataReceived;
 
@@ -39,6 +40,10 @@ namespace ParikramaCounter.Platforms.Android
 
         public void Start()
         {
+            // Fix #1: guard against double-registration which doubles callback rate on Android
+            if (isRunning) return;
+            isRunning = true;
+
             if (accelerometer != null)
                 sensorManager.RegisterListener(this, accelerometer, SensorDelay.Game);
             if (gyroscope != null)
@@ -49,20 +54,19 @@ namespace ParikramaCounter.Platforms.Android
 
         public void Stop()
         {
+            if (!isRunning) return;
+            isRunning = false;
+
             sensorManager.UnregisterListener(this);
-            // Reset ready flags so a subsequent Start() waits for fresh data
             lock (sensorLock)
             {
                 hasAccel = false;
-                hasGyro = false;
                 hasMag = false;
             }
         }
 
         public void OnSensorChanged(SensorEvent e)
         {
-            // Fix #1 & #3: update the correct array under the lock, then only
-            // dispatch once all three sensors have provided at least one reading.
             double[] accel, gyro, mag;
 
             lock (sensorLock)
@@ -79,7 +83,6 @@ namespace ParikramaCounter.Platforms.Android
                     gyroValues[0] = e.Values[0];
                     gyroValues[1] = e.Values[1];
                     gyroValues[2] = e.Values[2];
-                    hasGyro = true;
                 }
                 else if (e.Sensor.Type == SensorType.MagneticField)
                 {
@@ -89,7 +92,8 @@ namespace ParikramaCounter.Platforms.Android
                     hasMag = true;
                 }
 
-                if (!hasAccel || !hasMag) return; // gyro optional, accel+mag required
+                // Only dispatch once accel and mag have both provided real data
+                if (!hasAccel || !hasMag) return;
 
                 accel = new double[] { accelValues[0], accelValues[1], accelValues[2] };
                 gyro  = new double[] { gyroValues[0],  gyroValues[1],  gyroValues[2]  };

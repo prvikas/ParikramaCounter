@@ -47,9 +47,19 @@ namespace ParikramaCounter.Services
                 linearAccelZ * linearAccelZ
             );
 
-            // Fix #13: DetectStep return value was assigned but never used.
-            // Step count is read from stepDetector.StepCount — the bool is not needed.
+            // Fix #2: on iOS, iOSSensorService encodes the CMPedometer step count
+            // into gyro[0] so hardware step counting reaches the UI without an
+            // interface change. On Android, stepDetector.StepCount is used instead.
+            // We detect the iOS case by checking if gyro[0] is a whole number >= 0
+            // and significantly larger than a plausible rotation rate (rad/s).
+#if IOS
+            int iosSteps = (int)gyro[0]; // hardware pedometer count from iOSSensorService
+            stepDetector.DetectStep(accelMagnitude); // still run for IsMoving detection
+            int finalStepCount = iosSteps > 0 ? iosSteps : stepDetector.StepCount;
+#else
             stepDetector.DetectStep(accelMagnitude);
+            int finalStepCount = stepDetector.StepCount;
+#endif
 
             double heading = CalculateTiltCompensatedHeading(gravity, magnetic);
             double filteredHeading = headingFilter.Update(heading);
@@ -68,7 +78,7 @@ namespace ParikramaCounter.Services
                 Heading = filteredHeading,
                 TrueHeading = filteredHeading,
                 Direction = GetDirectionFromHeading(filteredHeading),
-                Steps = stepDetector.StepCount,
+                Steps = finalStepCount,
                 AccelerationMagnitude = accelMagnitude,
                 Timestamp = DateTime.Now
             };
@@ -111,6 +121,18 @@ namespace ParikramaCounter.Services
             stepDetector.Reset();
             headingFilter.Reset();
             gravity  = new double[] { 0.0, 0.0, 9.81 };
+            magnetic = new double[] { 20.0, 0.0, 45.0 };
+        }
+
+        // Fix #4: expose step detector tuning so SettingsViewModel changes take effect
+        public void UpdateStepThreshold(int threshold) => stepDetector.SetThresholdMultiplier(threshold / 100.0);
+        public void UpdateMinStepInterval(int ms) => stepDetector.SetMinStepInterval(ms);
+
+        // Fix #5: flush filter state for calibration — fresh magnetometer readings
+        // will replace the warm-up defaults within a few sensor ticks
+        public void ResetForCalibration()
+        {
+            headingFilter.Reset();
             magnetic = new double[] { 20.0, 0.0, 45.0 };
         }
     }

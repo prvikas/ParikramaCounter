@@ -14,7 +14,12 @@ namespace ParikramaCounter.ViewModels
         private bool disposed = false;
 
         private readonly ISensorService sensorService;
-        private readonly SensorFusionEngine fusionEngine = new SensorFusionEngine();
+
+        // Fix #7: SensorFusionEngine is now injected as a singleton from DI so
+        // TrackingViewModel, DiagnosticsViewModel, and SettingsViewModel all share
+        // the same engine instance. Live setting changes in SettingsViewModel
+        // immediately affect the engine used for tracking and diagnostics.
+        private readonly SensorFusionEngine fusionEngine;
         private readonly ParikramaTracker parikramaTracker = new ParikramaTracker();
 
         private const int TotalSides = 4;
@@ -33,10 +38,6 @@ namespace ParikramaCounter.ViewModels
         private double circleProgress;
         private string circleDirection = "Determining...";
         private int stepsInCircle;
-
-        // Fix #7: removed the always-"High" Accuracy property — it was dead state
-        // with no backing logic, misleading users. Wire to DirectionConfidence if
-        // a real accuracy signal is added in future.
 
         // ── Properties ────────────────────────────────────────────────────────────
 
@@ -84,8 +85,6 @@ namespace ParikramaCounter.ViewModels
                 OnPropertyChanged();
                 OnPropertyChanged(nameof(RemainingParikramas));
                 UpdateProgress();
-                // Note: UpdateProgress does NOT call OnPropertyChanged(RemainingParikramas)
-                // to avoid the triple-notification bug (#9).
             }
         }
 
@@ -153,18 +152,19 @@ namespace ParikramaCounter.ViewModels
 
         // ── Constructor ───────────────────────────────────────────────────────────
 
-        public TrackingViewModel(ISensorService sensorService)
+        public TrackingViewModel(ISensorService sensorService, SensorFusionEngine fusionEngine)
         {
             this.sensorService = sensorService ?? throw new ArgumentNullException(nameof(sensorService));
+            this.fusionEngine  = fusionEngine  ?? throw new ArgumentNullException(nameof(fusionEngine));
 
             this.sensorService.SensorDataReceived += OnSensorDataReceived;
             parikramaTracker.OnThirdSideCompleted += OnThirdSideCompleted;
-            parikramaTracker.OnApproachingStart += OnApproachingStart;
+            parikramaTracker.OnApproachingStart   += OnApproachingStart;
 
-            StartStopCommand = new Command(StartStop);
-            ResetCommand = new Command(Reset);
+            StartStopCommand       = new Command(StartStop);
+            ResetCommand           = new Command(Reset);
             IncrementTargetCommand = new Command(() => { if (TargetParikrama < 108) TargetParikrama++; });
-            DecrementTargetCommand = new Command(() => { if (TargetParikrama > 1) TargetParikrama--; });
+            DecrementTargetCommand = new Command(() => { if (TargetParikrama > 1)   TargetParikrama--; });
 
             parikramaTracker.TargetParikramaCount = targetParikrama;
         }
@@ -177,16 +177,18 @@ namespace ParikramaCounter.ViewModels
 
             MainThread.BeginInvokeOnMainThread(() =>
             {
-                Heading = $"{data.Heading:F1}°";
-                Direction = data.Direction;
-                Steps = data.Steps;
-
+                Heading       = $"{data.Heading:F1}°";
+                Direction     = data.Direction;
+                Steps         = data.Steps;
                 MovementStatus = fusionEngine.IsMoving ? "🚶 Walking" : "🛑 Stationary";
 
                 CircleProgress = parikramaTracker.CurrentProgress;
                 CircleDirection = parikramaTracker.GetDirection();
-                StepsInCircle = parikramaTracker.CurrentStepsInCircle;
-                SidesInfo = $"{parikramaTracker.SidesCompleted}/{TotalSides} sides";
+                StepsInCircle  = parikramaTracker.CurrentStepsInCircle;
+                SidesInfo      = $"{parikramaTracker.SidesCompleted}/{TotalSides} sides";
+
+                // Only update tracking state when actively tracking
+                if (!isTracking) return;
 
                 bool completed = parikramaTracker.CheckAndUpdateParikrama(
                     data.Heading,
@@ -243,10 +245,7 @@ namespace ParikramaCounter.ViewModels
 
         private void VibrateForThirdSide()
         {
-            try
-            {
-                Vibration.Default.Vibrate(TimeSpan.FromMilliseconds(400));
-            }
+            try { Vibration.Default.Vibrate(TimeSpan.FromMilliseconds(400)); }
             catch (Exception ex)
             {
 #if DEBUG
@@ -257,10 +256,7 @@ namespace ParikramaCounter.ViewModels
 
         private void VibrateForApproachingStart()
         {
-            try
-            {
-                Vibration.Default.Vibrate(TimeSpan.FromMilliseconds(200));
-            }
+            try { Vibration.Default.Vibrate(TimeSpan.FromMilliseconds(200)); }
             catch (Exception ex)
             {
 #if DEBUG
@@ -271,10 +267,7 @@ namespace ParikramaCounter.ViewModels
 
         private void VibrateForParikramaCompletion()
         {
-            try
-            {
-                Vibration.Default.Vibrate(TimeSpan.FromMilliseconds(500));
-            }
+            try { Vibration.Default.Vibrate(TimeSpan.FromMilliseconds(500)); }
             catch (Exception ex)
             {
 #if DEBUG
@@ -306,11 +299,15 @@ namespace ParikramaCounter.ViewModels
         private void StartStop()
         {
             if (IsTracking)
+            {
                 sensorService.Stop();
+                IsTracking = false;
+            }
             else
+            {
                 sensorService.Start();
-
-            IsTracking = !IsTracking;
+                IsTracking = true;
+            }
         }
 
         private void Reset()
@@ -324,21 +321,18 @@ namespace ParikramaCounter.ViewModels
             fusionEngine.Reset();
             parikramaTracker.Reset();
 
-            Steps = 0;
+            Steps          = 0;
             ParikramaCount = 0;
-            TargetReached = false;
+            TargetReached  = false;
             MovementStatus = "Stationary";
-            SidesInfo = $"0/{TotalSides} sides";
+            SidesInfo      = $"0/{TotalSides} sides";
             CircleDirection = "Determining...";
-            CircleProgress = 0;
-            StepsInCircle = 0;
+            CircleProgress  = 0;
+            StepsInCircle   = 0;
 
             UpdateProgress();
         }
 
-        // Fix #9: UpdateProgress does NOT call OnPropertyChanged(RemainingParikramas).
-        // Callers (ParikramaCount setter, TargetParikrama setter) already notify it,
-        // so doing it here too caused every change to fire 2–3 notifications.
         private void UpdateProgress()
         {
             ProgressPercentage = TargetParikrama > 0
@@ -353,14 +347,12 @@ namespace ParikramaCounter.ViewModels
             if (disposed) return;
             disposed = true;
 
-            // Fix #10: stop the sensor hardware on dispose so it does not keep
-            // polling and draining battery after the ViewModel is torn down.
             if (isTracking)
                 sensorService.Stop();
 
-            sensorService.SensorDataReceived -= OnSensorDataReceived;
+            sensorService.SensorDataReceived      -= OnSensorDataReceived;
             parikramaTracker.OnThirdSideCompleted -= OnThirdSideCompleted;
-            parikramaTracker.OnApproachingStart -= OnApproachingStart;
+            parikramaTracker.OnApproachingStart   -= OnApproachingStart;
         }
 
         // ── INotifyPropertyChanged ────────────────────────────────────────────────

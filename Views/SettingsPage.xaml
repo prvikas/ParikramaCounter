@@ -54,7 +54,7 @@
                         <Label.FormattedText>
                             <FormattedString>
                                 <Span Text="• Kalman Filter: Process noise 0.001, Measurement noise 0.5" />
-                                <Span Text="&#10;• Complementary Filter: α=0.8 (High-pass), α=0.1 (Low-pass)" />
+                                <Span Text="• Complementary Filter: α=0.8 (gravity low-pass), α=0.1 (magnetometer low-pass)" />
                                 <Span Text="&#10;• Dynamic threshold with 50-sample history window" />
                                 <Span Text="&#10;• Tilt-compensated 3D compass" />
                             </FormattedString>
