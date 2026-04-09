@@ -76,7 +76,7 @@
 
                     <Label Text="{Binding TargetVibrationCount, StringFormat='Target pulse count: {0}'}"
                            FontSize="13" TextColor="#94a3b8"/>
-                    <Slider Minimum="1" Maximum="10" Value="{Binding TargetVibrationCount}"
+                    <Slider Minimum="1" Maximum="10" Value="{Binding TargetVibrationCountDouble}"
                             ThumbColor="#f59e0b" MinimumTrackColor="#f59e0b"/>
                 </VerticalStackLayout>
             </Frame>

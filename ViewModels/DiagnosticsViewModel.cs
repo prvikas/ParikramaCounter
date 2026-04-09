@@ -8,7 +8,7 @@ namespace ParikramaCounter.ViewModels
 {
     public class DiagnosticsViewModel : INotifyPropertyChanged, IDisposable
     {
-        private readonly ISensorService   sensorService;
+        private readonly ISensorService    sensorService;
         private readonly TrackingViewModel trackingViewModel;
         private bool disposed;
 
@@ -16,8 +16,8 @@ namespace ParikramaCounter.ViewModels
         private string gyroX  = "0.000", gyroY  = "0.000", gyroZ  = "0.000";
         private string magX   = "0.000", magY   = "0.000", magZ   = "0.000";
         private string accelMagnitude   = "0.000";
-        private string currentThreshold = "0.000";
-        private string timestamp        = DateTime.Now.ToString("HH:mm:ss.fff");
+        private string currentThreshold = "dynamic";
+        private string timestamp = DateTime.Now.ToString("HH:mm:ss.fff");
 
         public string AccelX           { get => accelX;           set { accelX = value;           OnPropertyChanged(); } }
         public string AccelY           { get => accelY;           set { accelY = value;           OnPropertyChanged(); } }
@@ -28,11 +28,12 @@ namespace ParikramaCounter.ViewModels
         public string MagX             { get => magX;             set { magX = value;             OnPropertyChanged(); } }
         public string MagY             { get => magY;             set { magY = value;             OnPropertyChanged(); } }
         public string MagZ             { get => magZ;             set { magZ = value;             OnPropertyChanged(); } }
+        // Fix #12: labelled as total magnitude (includes ~9.81 gravity when stationary)
         public string AccelMagnitude   { get => accelMagnitude;   set { accelMagnitude = value;   OnPropertyChanged(); } }
         public string CurrentThreshold { get => currentThreshold; set { currentThreshold = value; OnPropertyChanged(); } }
         public string Timestamp        { get => timestamp;        set { timestamp = value;        OnPropertyChanged(); } }
 
-        // Read heading and direction from the shared TrackingViewModel (real fusion engine state)
+        // Heading and steps read from the shared TrackingViewModel (real engine state)
         public string Heading     => trackingViewModel.Heading;
         public string TrueHeading => trackingViewModel.Heading;
         public string Steps       => trackingViewModel.Steps.ToString();
@@ -46,7 +47,8 @@ namespace ParikramaCounter.ViewModels
 
         private void OnSensorDataReceived(double[] accel, double[] gyro, double[] mag)
         {
-            double mx = Math.Sqrt(accel[0]*accel[0] + accel[1]*accel[1] + accel[2]*accel[2]);
+            // Total accel magnitude includes gravity (~9.81 m/s² at rest is expected)
+            double totalMag = Math.Sqrt(accel[0]*accel[0] + accel[1]*accel[1] + accel[2]*accel[2]);
 
             MainThread.BeginInvokeOnMainThread(() =>
             {
@@ -59,9 +61,8 @@ namespace ParikramaCounter.ViewModels
                 MagX   = mag[0].ToString("F3");
                 MagY   = mag[1].ToString("F3");
                 MagZ   = mag[2].ToString("F3");
-                AccelMagnitude   = mx.ToString("F3");
-                // CurrentThreshold is the dynamic step threshold from the fusion engine
-                CurrentThreshold = "auto";
+                AccelMagnitude   = totalMag.ToString("F3");
+                CurrentThreshold = "dynamic";
                 Timestamp        = DateTime.Now.ToString("HH:mm:ss.fff");
                 OnPropertyChanged(nameof(Heading));
                 OnPropertyChanged(nameof(TrueHeading));

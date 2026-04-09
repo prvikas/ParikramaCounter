@@ -1,28 +1,32 @@
+using Microsoft.Maui;
 using Microsoft.Maui.Controls;
+using Microsoft.Extensions.DependencyInjection;
 using ParikramaCounter.ViewModels;
 
 namespace ParikramaCounter
 {
     public partial class App : Application
     {
-        private readonly TrackingViewModel trackingViewModel;
-        private readonly DiagnosticsViewModel diagnosticsViewModel;
+        // MAUI resolves App via reflection using the DI container.
+        // We store references only for the Destroying lifecycle hook.
+        private TrackingViewModel    trackingViewModel;
+        private DiagnosticsViewModel diagnosticsViewModel;
 
-        public App(TrackingViewModel trackingVm, DiagnosticsViewModel diagnosticsVm)
+        // Parameterless constructor path for MAUI bootstrapper compatibility.
+        // Real instances are pulled from the service provider after build.
+        public App()
         {
             InitializeComponent();
-            trackingViewModel    = trackingVm;
-            diagnosticsViewModel = diagnosticsVm;
         }
 
         protected override Window CreateWindow(IActivationState? activationState)
         {
+            // Resolve singletons now that the DI container is fully built
+            trackingViewModel    = IPlatformApplication.Current?.Services.GetService<TrackingViewModel>();
+            diagnosticsViewModel = IPlatformApplication.Current?.Services.GetService<DiagnosticsViewModel>();
+
             var window = new Window(new AppShell());
 
-            // Fix #15: CleanUp() is not a real MAUI Application override and is
-            // never called on iOS where the OS kills apps without lifecycle hooks.
-            // Window.Destroying fires reliably on both Android and iOS when the
-            // app window is closed or the process is about to be terminated.
             window.Destroying += (_, _) =>
             {
                 trackingViewModel?.Dispose();

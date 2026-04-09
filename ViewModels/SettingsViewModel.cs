@@ -74,7 +74,14 @@ namespace ParikramaCounter.ViewModels
         public int TargetVibrationCount
         {
             get => targetVibrationCount;
-            set { targetVibrationCount = Math.Max(1, Math.Min(10, value)); OnPropertyChanged(); Save(); }
+            set { targetVibrationCount = Math.Max(1, Math.Min(10, value)); OnPropertyChanged(); OnPropertyChanged(nameof(TargetVibrationCountDouble)); Save(); }
+        }
+
+        // Slider requires double — use this for two-way binding to avoid type coercion warnings
+        public double TargetVibrationCountDouble
+        {
+            get => targetVibrationCount;
+            set { TargetVibrationCount = (int)Math.Round(value); }
         }
 
         public bool EnableVibrations

@@ -193,12 +193,20 @@ namespace ParikramaCounter.ViewModels
             ManualDecrementCommand = new Command(ManualDecrement);
             ToggleCountModeCommand = new Command(() => settings.IsDescendingMode = !settings.IsDescendingMode);
 
-            // Restore persisted state
-            targetParikrama = Preferences.Get("TargetParikrama", 7);
-            parikramaCount  = Preferences.Get("ParikramaCount",  0);
-            parikramaTracker.TargetParikramaCount = targetParikrama;
-            CountModeLabel  = settings.IsDescendingMode ? "Descending" : "Ascending";
-            UpdateProgress();
+            // Restore persisted state — use the property setters (not backing fields)
+            // so OnPropertyChanged, RemainingParikramas, DisplayCount, and UpdateProgress
+            // all fire correctly on startup.
+            int restoredTarget = Preferences.Get("TargetParikrama", 7);
+            int restoredCount  = Preferences.Get("ParikramaCount",  0);
+
+            // Set target first so tracker and progress are consistent when count is set
+            targetParikrama = restoredTarget;
+            parikramaTracker.TargetParikramaCount = restoredTarget;
+
+            // Set count via setter to fire all notifications
+            ParikramaCount = restoredCount;
+
+            CountModeLabel = settings.IsDescendingMode ? "Descending" : "Ascending";
         }
 
         // ── Sensor data handler ───────────────────────────────────────────────────
@@ -240,12 +248,12 @@ namespace ParikramaCounter.ViewModels
 
         private void ManualIncrement()
         {
-            if (ParikramaCount < TargetParikrama)
-            {
-                ParikramaCount++;
-                parikramaTracker.ManualSetCount(parikramaCount);
-                HandleCompletion();
-            }
+            // Allow incrementing up to 108 (hard cap) even past target —
+            // a devotee may wish to do extra rounds
+            if (ParikramaCount >= 108) return;
+            ParikramaCount++;
+            parikramaTracker.ManualSetCount(parikramaCount);
+            HandleCompletion();
         }
 
         private void ManualDecrement()
@@ -347,7 +355,6 @@ namespace ParikramaCounter.ViewModels
             if (IsTracking) { sensorService.Stop(); IsTracking = false; }
             fusionEngine.Reset();
             parikramaTracker.Reset();
-            ParikramaCount  = 0;
             TargetReached   = false;
             MovementStatus  = "Stationary";
             SidesInfo       = $"0/{TotalSides} sides";
@@ -355,7 +362,7 @@ namespace ParikramaCounter.ViewModels
             CircleProgress  = 0;
             StepsInCircle   = 0;
             Steps           = 0;
-            UpdateProgress();
+            ParikramaCount  = 0; // setter calls UpdateProgress() and SaveCount()
         }
 
         private void UpdateProgress()

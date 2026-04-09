@@ -22,9 +22,9 @@ namespace ParikramaCounter.Platforms.Android
         private bool hasMag   = false;
         private bool isRunning = false;
 
-        // HardwareStepCount on Android is provided by StepDetector via SensorFusionEngine.
-        // The property is updated each time ProcessSensorData runs.
-        public int HardwareStepCount { get; set; }
+        // HardwareStepCount on Android mirrors StepDetector — updated by SensorFusionEngine
+        public int HardwareStepCount { get; private set; }
+        public void UpdateHardwareStepCount(int count) { HardwareStepCount = count; }
 
         public event Action<double[], double[], double[]> SensorDataReceived;
 

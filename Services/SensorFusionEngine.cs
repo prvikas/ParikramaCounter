@@ -39,10 +39,18 @@ namespace ParikramaCounter.Services
             double accelMag = Math.Sqrt(lx*lx + ly*ly + lz*lz);
             stepDetector.DetectStep(accelMag);
 
-            // Prefer hardware pedometer (iOS CMPedometer) when it has counted steps.
-            // Fall back to software StepDetector (Android and iOS before first pedometer update).
+            int swSteps = stepDetector.StepCount;
             int hwSteps = SensorService?.HardwareStepCount ?? 0;
-            int steps   = hwSteps > 0 ? hwSteps : stepDetector.StepCount;
+
+            // On Android, sync the hardware step count from StepDetector via the update method
+            // so HardwareStepCount is always consistent regardless of platform.
+#if ANDROID
+            if (SensorService is ParikramaCounter.Platforms.Android.AndroidSensorService androidSvc)
+                androidSvc.UpdateHardwareStepCount(swSteps);
+            hwSteps = swSteps;
+#endif
+            // On iOS, prefer CMPedometer (hwSteps) when available; fall back to StepDetector
+            int steps = hwSteps > 0 ? hwSteps : swSteps;
 
             double heading         = CalculateTiltCompensatedHeading(gravity, magnetic);
             double filteredHeading = headingFilter.Update(heading);

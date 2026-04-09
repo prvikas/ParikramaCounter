@@ -74,7 +74,7 @@
                 <VerticalStackLayout Spacing="8">
                     <Label Text="Step Detection" FontSize="18" FontAttributes="Bold" TextColor="#3b82f6"/>
                     <Grid ColumnDefinitions="*,*" RowDefinitions="Auto,Auto" ColumnSpacing="10" RowSpacing="5">
-                        <Label Text="Accel Magnitude:" TextColor="#94a3b8" Grid.Row="0" Grid.Column="0"/>
+                        <Label Text="Total accel (m/s²):" TextColor="#94a3b8" Grid.Row="0" Grid.Column="0"/>
                         <Label Text="{Binding AccelMagnitude}" TextColor="White" Grid.Row="0" Grid.Column="1"/>
                         <Label Text="Threshold:" TextColor="#94a3b8" Grid.Row="1" Grid.Column="0"/>
                         <Label Text="{Binding CurrentThreshold}" TextColor="White" Grid.Row="1" Grid.Column="1"/>
