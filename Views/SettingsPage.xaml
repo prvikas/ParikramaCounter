@@ -6,69 +6,120 @@
              BackgroundColor="#0f172a">
 
     <ScrollView>
-        <VerticalStackLayout Padding="20" Spacing="25">
+        <VerticalStackLayout Padding="20" Spacing="20">
 
-            <Label Text="Settings and Calibration" FontSize="24" FontAttributes="Bold" TextColor="White" HorizontalOptions="Center"/>
+            <Label Text="Settings" FontSize="24" FontAttributes="Bold"
+                   TextColor="White" HorizontalOptions="Center"/>
 
-            <!-- Magnetometer Calibration -->
-            <Frame BackgroundColor="#1e293b" BorderColor="#3b82f6" CornerRadius="15" Padding="20">
-                <VerticalStackLayout Spacing="15">
-                    <Label Text="Magnetometer Calibration" FontSize="18" FontAttributes="Bold" TextColor="#3b82f6"/>
-                    <Label Text="Move your device in a figure-8 pattern to calibrate the compass for accurate heading detection." 
-                           TextColor="#94a3b8" FontSize="14"/>
+            <!-- Counting mode -->
+            <Frame BackgroundColor="#1e293b" BorderColor="#8b5cf6" CornerRadius="15" Padding="16">
+                <VerticalStackLayout Spacing="12">
+                    <Label Text="Counting mode" FontSize="16" FontAttributes="Bold" TextColor="#8b5cf6"/>
+                    <Grid ColumnDefinitions="*,Auto">
+                        <VerticalStackLayout Grid.Column="0">
+                            <Label Text="Descending mode" FontSize="14" TextColor="White"/>
+                            <Label Text="Counts down from target to zero" FontSize="12" TextColor="#64748b"/>
+                        </VerticalStackLayout>
+                        <Switch IsToggled="{Binding IsDescendingMode}"
+                                OnColor="#8b5cf6" Grid.Column="1" VerticalOptions="Center"/>
+                    </Grid>
+                </VerticalStackLayout>
+            </Frame>
 
-                    <ProgressBar Progress="{Binding CalibrationProgress}" 
-                                 ProgressColor="#3b82f6" 
-                                 IsVisible="{Binding IsCalibrating}"
-                                 HeightRequest="10"/>
+            <!-- Auto sensor counting -->
+            <Frame BackgroundColor="#1e293b" BorderColor="#10b981" CornerRadius="15" Padding="16">
+                <VerticalStackLayout Spacing="12">
+                    <Label Text="Sensor auto-counting" FontSize="16" FontAttributes="Bold" TextColor="#10b981"/>
+                    <Grid ColumnDefinitions="*,Auto">
+                        <VerticalStackLayout Grid.Column="0">
+                            <Label Text="Auto-count via sensors" FontSize="14" TextColor="White"/>
+                            <Label Text="Uses compass, gyroscope, and step counter" FontSize="12" TextColor="#64748b"/>
+                        </VerticalStackLayout>
+                        <Switch IsToggled="{Binding AutoCountingEnabled}"
+                                OnColor="#10b981" Grid.Column="1" VerticalOptions="Center"/>
+                    </Grid>
+                </VerticalStackLayout>
+            </Frame>
 
-                    <Button Text="Start Calibration" 
+            <!-- Vibration settings -->
+            <Frame BackgroundColor="#1e293b" BorderColor="#f59e0b" CornerRadius="15" Padding="16">
+                <VerticalStackLayout Spacing="14">
+                    <Label Text="Vibration" FontSize="16" FontAttributes="Bold" TextColor="#f59e0b"/>
+
+                    <Grid ColumnDefinitions="*,Auto">
+                        <Label Text="Enable vibrations" FontSize="14" TextColor="White" Grid.Column="0" VerticalOptions="Center"/>
+                        <Switch IsToggled="{Binding EnableVibrations}"
+                                OnColor="#f59e0b" Grid.Column="1"/>
+                    </Grid>
+
+                    <BoxView HeightRequest="1" BackgroundColor="#334155"/>
+
+                    <Label Text="{Binding ThirdSideVibrationMs, StringFormat='3rd side alert: {0} ms'}"
+                           FontSize="13" TextColor="#94a3b8"/>
+                    <Slider Minimum="100" Maximum="1000" Value="{Binding ThirdSideVibrationMs}"
+                            ThumbColor="#f59e0b" MinimumTrackColor="#f59e0b"/>
+
+                    <Label Text="{Binding ApproachingStartVibrationMs, StringFormat='Approaching start: {0} ms'}"
+                           FontSize="13" TextColor="#94a3b8"/>
+                    <Slider Minimum="100" Maximum="1000" Value="{Binding ApproachingStartVibrationMs}"
+                            ThumbColor="#f59e0b" MinimumTrackColor="#f59e0b"/>
+
+                    <Label Text="{Binding CompletionVibrationMs, StringFormat='Pradhakshina complete: {0} ms'}"
+                           FontSize="13" TextColor="#94a3b8"/>
+                    <Slider Minimum="200" Maximum="2000" Value="{Binding CompletionVibrationMs}"
+                            ThumbColor="#f59e0b" MinimumTrackColor="#f59e0b"/>
+
+                    <Label Text="{Binding TargetVibrationMs, StringFormat='Target reached pulse: {0} ms'}"
+                           FontSize="13" TextColor="#94a3b8"/>
+                    <Slider Minimum="100" Maximum="1000" Value="{Binding TargetVibrationMs}"
+                            ThumbColor="#f59e0b" MinimumTrackColor="#f59e0b"/>
+
+                    <Label Text="{Binding TargetVibrationCount, StringFormat='Target pulse count: {0}'}"
+                           FontSize="13" TextColor="#94a3b8"/>
+                    <Slider Minimum="1" Maximum="10" Value="{Binding TargetVibrationCount}"
+                            ThumbColor="#f59e0b" MinimumTrackColor="#f59e0b"/>
+                </VerticalStackLayout>
+            </Frame>
+
+            <!-- Step detection tuning -->
+            <Frame BackgroundColor="#1e293b" BorderColor="#3b82f6" CornerRadius="15" Padding="16">
+                <VerticalStackLayout Spacing="12">
+                    <Label Text="Step detection" FontSize="16" FontAttributes="Bold" TextColor="#3b82f6"/>
+
+                    <Label Text="{Binding StepThreshold, StringFormat='Sensitivity: {0}%'}"
+                           FontSize="13" TextColor="#94a3b8"/>
+                    <Label Text="Higher = less sensitive, fewer false steps" FontSize="12" TextColor="#64748b"/>
+                    <Slider Minimum="50" Maximum="200" Value="{Binding StepThreshold}"
+                            ThumbColor="#3b82f6" MinimumTrackColor="#3b82f6"/>
+
+                    <Label Text="{Binding MinStepInterval, StringFormat='Min step gap: {0} ms'}"
+                           FontSize="13" TextColor="#94a3b8"/>
+                    <Label Text="Minimum time between counted steps" FontSize="12" TextColor="#64748b"/>
+                    <Slider Minimum="150" Maximum="500" Value="{Binding MinStepInterval}"
+                            ThumbColor="#3b82f6" MinimumTrackColor="#3b82f6"/>
+                </VerticalStackLayout>
+            </Frame>
+
+            <!-- Compass calibration -->
+            <Frame BackgroundColor="#1e293b" BorderColor="#6366f1" CornerRadius="15" Padding="16">
+                <VerticalStackLayout Spacing="12">
+                    <Label Text="Compass calibration" FontSize="16" FontAttributes="Bold" TextColor="#6366f1"/>
+                    <Label Text="Move your device in a figure-8 pattern for 10 seconds to improve heading accuracy."
+                           TextColor="#94a3b8" FontSize="13"/>
+                    <ProgressBar Progress="{Binding CalibrationProgress}"
+                                 ProgressColor="#6366f1" IsVisible="{Binding IsCalibrating}"
+                                 HeightRequest="8"/>
+                    <Button Text="Start Calibration"
                             Command="{Binding StartCalibrationCommand}"
-                            BackgroundColor="#3b82f6" 
-                            TextColor="White"
-                            CornerRadius="10"
+                            BackgroundColor="#6366f1" TextColor="White" CornerRadius="10"
                             IsEnabled="{Binding IsCalibrating, Converter={StaticResource InverseBoolConverter}}"/>
                 </VerticalStackLayout>
             </Frame>
 
-            <!-- Step Detection Settings -->
-            <Frame BackgroundColor="#1e293b" BorderColor="#3b82f6" CornerRadius="15" Padding="20">
-                <VerticalStackLayout Spacing="15">
-                    <Label Text="Step Detection Tuning" FontSize="18" FontAttributes="Bold" TextColor="#3b82f6"/>
-
-                    <Label Text="{Binding StepThreshold, StringFormat='Threshold: {0}%'}" TextColor="White"/>
-                    <Slider Minimum="50" Maximum="200" Value="{Binding StepThreshold}" 
-                            ThumbColor="#3b82f6" MinimumTrackColor="#3b82f6"/>
-
-                    <Label Text="{Binding MinStepInterval, StringFormat='Min Interval: {0}ms'}" TextColor="White"/>
-                    <Slider Minimum="150" Maximum="500" Value="{Binding MinStepInterval}" 
-                            ThumbColor="#3b82f6" MinimumTrackColor="#3b82f6"/>
-                </VerticalStackLayout>
-            </Frame>
-
-            <!-- Algorithm Documentation -->
-            <Frame BackgroundColor="#1e293b" BorderColor="#3b82f6" CornerRadius="15" Padding="20">
-                <VerticalStackLayout Spacing="10">
-                    <Label Text="Algorithm Info" FontSize="18" FontAttributes="Bold" TextColor="#3b82f6"/>
-                    <Label TextColor="#94a3b8" FontSize="13">
-                        <Label.FormattedText>
-                            <FormattedString>
-                                <Span Text="• Kalman Filter: Process noise 0.001, Measurement noise 0.5" />
-                                <Span Text="• Complementary Filter: α=0.8 (gravity low-pass), α=0.1 (magnetometer low-pass)" />
-                                <Span Text="&#10;• Dynamic threshold with 50-sample history window" />
-                                <Span Text="&#10;• Tilt-compensated 3D compass" />
-                            </FormattedString>
-                        </Label.FormattedText>
-                    </Label>
-                </VerticalStackLayout>
-            </Frame>
-
-            <!-- Reset Button -->
-            <Button Text="Reset to Defaults" 
+            <!-- Reset all -->
+            <Button Text="Reset all settings to defaults"
                     Command="{Binding ResetSettingsCommand}"
-                    BackgroundColor="#ef4444" 
-                    TextColor="White"
-                    CornerRadius="10"/>
+                    BackgroundColor="#ef4444" TextColor="White" CornerRadius="10"/>
 
         </VerticalStackLayout>
     </ScrollView>

@@ -27,31 +27,38 @@ namespace ParikramaCounter
             builder.Logging.AddDebug();
 #endif
 
-            // Platform sensor service
 #if ANDROID
             builder.Services.AddSingleton<ISensorService, AndroidSensorService>();
 #elif IOS
             builder.Services.AddSingleton<ISensorService, iOSSensorService>();
 #endif
 
-            // Fix #4: SensorFusionEngine registered as singleton so SettingsViewModel
-            // and TrackingViewModel share the same instance and live tuning works.
-            builder.Services.AddSingleton<SensorFusionEngine>();
+            // Shared engine — wire SensorService reference after both are created
+            builder.Services.AddSingleton<SensorFusionEngine>(sp =>
+            {
+                var engine  = new SensorFusionEngine();
+                var svc     = sp.GetRequiredService<ISensorService>();
+                engine.SensorService = svc;
+                return engine;
+            });
 
-            // ViewModels
-            builder.Services.AddSingleton<TrackingViewModel>();
+            // Settings loads persisted prefs on construction; created first so
+            // TrackingViewModel can receive it at construction time
+            builder.Services.AddSingleton<SettingsViewModel>(sp =>
+                new SettingsViewModel(sp.GetRequiredService<SensorFusionEngine>()));
 
-            // Fix #3: DiagnosticsViewModel reads from TrackingViewModel for accurate
-            // heading/status rather than running a private shadow fusion engine.
+            // TrackingViewModel receives settings so it reads vibration config live
+            builder.Services.AddSingleton<TrackingViewModel>(sp =>
+                new TrackingViewModel(
+                    sp.GetRequiredService<ISensorService>(),
+                    sp.GetRequiredService<SensorFusionEngine>(),
+                    sp.GetRequiredService<SettingsViewModel>()));
+
+            // DiagnosticsViewModel reads heading from the shared TrackingViewModel
             builder.Services.AddSingleton<DiagnosticsViewModel>(sp =>
                 new DiagnosticsViewModel(
                     sp.GetRequiredService<ISensorService>(),
-                    sp.GetRequiredService<TrackingViewModel>()
-                ));
-
-            // Fix #4/#5/#6: SettingsViewModel receives shared engine for live tuning
-            builder.Services.AddSingleton<SettingsViewModel>(sp =>
-                new SettingsViewModel(sp.GetRequiredService<SensorFusionEngine>()));
+                    sp.GetRequiredService<TrackingViewModel>()));
 
             // Pages
             builder.Services.AddTransient<Views.TrackingPage>();

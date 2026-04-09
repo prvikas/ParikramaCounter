@@ -20,16 +20,8 @@ namespace ParikramaCounter.Platforms.iOS
         private bool hasAccel = false;
         private bool hasMag   = false;
 
-        // Fix #2: pedometerSteps is now included in the gyro array's [0] slot
-        // so the SensorFusionEngine receives hardware step count via gyro[0].
-        // The gyro is not used for heading calculation — only accel+mag are used.
-        // SensorData.Steps is populated from stepDetector on Android; on iOS we
-        // override it by passing the pedometer count through the unused gyro[0].
-        // SensorFusionEngine reads gyro only for SensorData.GyroX/Y/Z display —
-        // it does not use gyro for step detection or heading.
-        // A cleaner solution would extend ISensorService, but this avoids an
-        // interface change that would require updating both platform implementations.
-        private int pedometerSteps = 0;
+        // HardwareStepCount exposed via the interface — no longer smuggled through gyro[0]
+        public int HardwareStepCount { get; private set; }
 
         public event Action<double[], double[], double[]> SensorDataReceived;
 
@@ -73,7 +65,6 @@ namespace ParikramaCounter.Platforms.iOS
                         gyroValues[1] = data.RotationRate.y;
                         gyroValues[2] = data.RotationRate.z;
                     }
-                    // Gyro alone does not trigger dispatch
                 });
             }
 
@@ -94,20 +85,12 @@ namespace ParikramaCounter.Platforms.iOS
                 });
             }
 
-            // Fix #2: CMPedometer provides hardware-accurate step counting on iOS.
-            // The count is passed to SensorFusionEngine via a dedicated field in the
-            // dispatch — see TryDispatch() and the note on pedometerSteps above.
             if (CMPedometer.IsStepCountingAvailable)
             {
                 pedometer.StartPedometerUpdates(NSDate.Now, (data, error) =>
                 {
                     if (data != null)
-                    {
-                        lock (sensorLock)
-                        {
-                            pedometerSteps = data.NumberOfSteps.Int32Value;
-                        }
-                    }
+                        HardwareStepCount = data.NumberOfSteps.Int32Value;
                 });
             }
 
@@ -118,46 +101,26 @@ namespace ParikramaCounter.Platforms.iOS
         {
             if (!isRunning) return;
             isRunning = false;
-
             motionManager.StopAccelerometerUpdates();
             motionManager.StopGyroUpdates();
             motionManager.StopMagnetometerUpdates();
             pedometer.StopPedometerUpdates();
-
-            lock (sensorLock)
-            {
-                hasAccel = false;
-                hasMag   = false;
-                pedometerSteps = 0;
-            }
+            lock (sensorLock) { hasAccel = false; hasMag = false; HardwareStepCount = 0; }
         }
 
         private void TryDispatch()
         {
             double[] accel, gyro, mag;
-            int steps;
-
             lock (sensorLock)
             {
                 if (!hasAccel || !hasMag) return;
-
                 accel = (double[])accelValues.Clone();
                 gyro  = (double[])gyroValues.Clone();
                 mag   = (double[])magValues.Clone();
-                steps = pedometerSteps;
             }
-
-            // Fix #2: encode hardware step count into gyro[0] so SensorFusionEngine
-            // can surface it in SensorData.Steps on iOS without an interface change.
-            // SensorFusionEngine passes gyro through to SensorData.GyroX/Y/Z only —
-            // it does not use gyro values for any calculation.
-            gyro[0] = steps;
-
             SensorDataReceived?.Invoke(accel, gyro, mag);
         }
 
-        // Fix #10: Stop() before marking disposed — ensures isRunning check inside
-        // Stop() still works correctly, avoiding a subtle ordering dependency.
         public void Dispose()
         {
             if (disposed) return;

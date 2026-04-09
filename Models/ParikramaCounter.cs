@@ -178,6 +178,12 @@ namespace ParikramaCounter.Models
             ResetCircle();
         }
 
+        // Called when the user manually adjusts the count so the tracker stays in sync
+        public void ManualSetCount(int count)
+        {
+            ParikramaCount = Math.Max(0, count);
+        }
+
         public string GetDirection()
         {
             if (headingTracker.IsClockwise)

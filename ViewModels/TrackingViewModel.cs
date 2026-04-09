@@ -13,43 +13,36 @@ namespace ParikramaCounter.ViewModels
     {
         private bool disposed = false;
 
-        private readonly ISensorService sensorService;
-
-        // Fix #7: SensorFusionEngine is now injected as a singleton from DI so
-        // TrackingViewModel, DiagnosticsViewModel, and SettingsViewModel all share
-        // the same engine instance. Live setting changes in SettingsViewModel
-        // immediately affect the engine used for tracking and diagnostics.
+        private readonly ISensorService    sensorService;
         private readonly SensorFusionEngine fusionEngine;
-        private readonly ParikramaTracker parikramaTracker = new ParikramaTracker();
+        private readonly ParikramaTracker  parikramaTracker = new ParikramaTracker();
+        private readonly SettingsViewModel settings;
 
         private const int TotalSides = 4;
 
-        private bool isTracking;
-        private string heading = "0°";
-        private string direction = "N";
-        private int steps;
-        private int parikramaCount;
-        private int targetParikrama = 7;
+        // ── Backing fields ────────────────────────────────────────────────────────
+        private bool   isTracking;
+        private string heading          = "0°";
+        private string direction        = "N";
+        private int    steps;
+        private int    parikramaCount;
+        private int    targetParikrama  = 7;
         private double progressPercentage;
         private string startStopButtonText = "Start";
-        private bool targetReached;
-        private string movementStatus = "Stationary";
-        private string sidesInfo = $"0/{TotalSides} sides";
+        private bool   targetReached;
+        private string movementStatus   = "Stationary";
+        private string sidesInfo        = $"0/{TotalSides} sides";
         private double circleProgress;
-        private string circleDirection = "Determining...";
-        private int stepsInCircle;
+        private string circleDirection  = "Determining...";
+        private int    stepsInCircle;
+        private string countModeLabel   = "Ascending";
 
         // ── Properties ────────────────────────────────────────────────────────────
 
         public bool IsTracking
         {
             get => isTracking;
-            set
-            {
-                isTracking = value;
-                StartStopButtonText = value ? "Stop" : "Start";
-                OnPropertyChanged();
-            }
+            set { isTracking = value; StartStopButtonText = value ? "Stop" : "Start"; OnPropertyChanged(); }
         }
 
         public string StartStopButtonText
@@ -84,9 +77,16 @@ namespace ParikramaCounter.ViewModels
                 parikramaCount = value;
                 OnPropertyChanged();
                 OnPropertyChanged(nameof(RemainingParikramas));
+                OnPropertyChanged(nameof(DisplayCount));
                 UpdateProgress();
+                SaveCount();
             }
         }
+
+        // DisplayCount shows the count differently for ascending vs descending mode
+        public string DisplayCount => settings.IsDescendingMode
+            ? $"{Math.Max(0, TargetParikrama - parikramaCount)}"
+            : $"{parikramaCount}";
 
         public int TargetParikrama
         {
@@ -97,7 +97,9 @@ namespace ParikramaCounter.ViewModels
                 parikramaTracker.TargetParikramaCount = value;
                 OnPropertyChanged();
                 OnPropertyChanged(nameof(RemainingParikramas));
+                OnPropertyChanged(nameof(DisplayCount));
                 UpdateProgress();
+                Preferences.Set("TargetParikrama", value);
             }
         }
 
@@ -145,28 +147,58 @@ namespace ParikramaCounter.ViewModels
             set { stepsInCircle = value; OnPropertyChanged(); }
         }
 
-        public ICommand StartStopCommand { get; }
-        public ICommand ResetCommand { get; }
-        public ICommand IncrementTargetCommand { get; }
-        public ICommand DecrementTargetCommand { get; }
+        public string CountModeLabel
+        {
+            get => countModeLabel;
+            set { countModeLabel = value; OnPropertyChanged(); }
+        }
+
+        // ── Commands ──────────────────────────────────────────────────────────────
+
+        public ICommand StartStopCommand          { get; }
+        public ICommand ResetCommand              { get; }
+        public ICommand IncrementTargetCommand    { get; }
+        public ICommand DecrementTargetCommand    { get; }
+        public ICommand ManualIncrementCommand    { get; }   // manual +1 pradhakshina
+        public ICommand ManualDecrementCommand    { get; }   // manual -1 pradhakshina
+        public ICommand ToggleCountModeCommand    { get; }   // ascending ↔ descending
 
         // ── Constructor ───────────────────────────────────────────────────────────
 
-        public TrackingViewModel(ISensorService sensorService, SensorFusionEngine fusionEngine)
+        public TrackingViewModel(ISensorService sensorService, SensorFusionEngine fusionEngine, SettingsViewModel settings)
         {
             this.sensorService = sensorService ?? throw new ArgumentNullException(nameof(sensorService));
             this.fusionEngine  = fusionEngine  ?? throw new ArgumentNullException(nameof(fusionEngine));
+            this.settings      = settings      ?? throw new ArgumentNullException(nameof(settings));
 
             this.sensorService.SensorDataReceived += OnSensorDataReceived;
             parikramaTracker.OnThirdSideCompleted += OnThirdSideCompleted;
             parikramaTracker.OnApproachingStart   += OnApproachingStart;
 
+            // Settings changes that affect display need re-notification
+            settings.PropertyChanged += (_, e) =>
+            {
+                if (e.PropertyName == nameof(SettingsViewModel.IsDescendingMode))
+                {
+                    CountModeLabel = settings.IsDescendingMode ? "Descending" : "Ascending";
+                    OnPropertyChanged(nameof(DisplayCount));
+                }
+            };
+
             StartStopCommand       = new Command(StartStop);
             ResetCommand           = new Command(Reset);
             IncrementTargetCommand = new Command(() => { if (TargetParikrama < 108) TargetParikrama++; });
             DecrementTargetCommand = new Command(() => { if (TargetParikrama > 1)   TargetParikrama--; });
+            ManualIncrementCommand = new Command(ManualIncrement);
+            ManualDecrementCommand = new Command(ManualDecrement);
+            ToggleCountModeCommand = new Command(() => settings.IsDescendingMode = !settings.IsDescendingMode);
 
+            // Restore persisted state
+            targetParikrama = Preferences.Get("TargetParikrama", 7);
+            parikramaCount  = Preferences.Get("ParikramaCount",  0);
             parikramaTracker.TargetParikramaCount = targetParikrama;
+            CountModeLabel  = settings.IsDescendingMode ? "Descending" : "Ascending";
+            UpdateProgress();
         }
 
         // ── Sensor data handler ───────────────────────────────────────────────────
@@ -177,44 +209,66 @@ namespace ParikramaCounter.ViewModels
 
             MainThread.BeginInvokeOnMainThread(() =>
             {
-                Heading       = $"{data.Heading:F1}°";
-                Direction     = data.Direction;
-                Steps         = data.Steps;
+                Heading        = $"{data.Heading:F1}°";
+                Direction      = data.Direction;
+                Steps          = data.Steps;
                 MovementStatus = fusionEngine.IsMoving ? "🚶 Walking" : "🛑 Stationary";
 
-                CircleProgress = parikramaTracker.CurrentProgress;
+                CircleProgress  = parikramaTracker.CurrentProgress;
                 CircleDirection = parikramaTracker.GetDirection();
-                StepsInCircle  = parikramaTracker.CurrentStepsInCircle;
-                SidesInfo      = $"{parikramaTracker.SidesCompleted}/{TotalSides} sides";
+                StepsInCircle   = parikramaTracker.CurrentStepsInCircle;
+                SidesInfo       = $"{parikramaTracker.SidesCompleted}/{TotalSides} sides";
 
-                // Only update tracking state when actively tracking
-                if (!isTracking) return;
+                // Only auto-count when tracking is active AND auto-counting is enabled
+                if (!isTracking || !settings.AutoCountingEnabled) return;
 
                 bool completed = parikramaTracker.CheckAndUpdateParikrama(
-                    data.Heading,
-                    data.Steps,
-                    fusionEngine.IsMoving,
-                    data.Timestamp
-                );
+                    data.Heading, data.Steps, fusionEngine.IsMoving, data.Timestamp);
 
                 if (completed)
                 {
 #if DEBUG
-                    System.Diagnostics.Debug.WriteLine($"🎉 Parikrama #{parikramaTracker.ParikramaCount}");
+                    System.Diagnostics.Debug.WriteLine($"🎉 Pradhakshina #{parikramaTracker.ParikramaCount}");
 #endif
                     ParikramaCount = parikramaTracker.ParikramaCount;
-
-                    if (parikramaTracker.IsTargetReached && !TargetReached)
-                    {
-                        TargetReached = true;
-                        _ = VibrateForTargetCompletionAsync();
-                    }
-                    else
-                    {
-                        VibrateForParikramaCompletion();
-                    }
+                    HandleCompletion();
                 }
             });
+        }
+
+        // ── Manual counting ───────────────────────────────────────────────────────
+
+        private void ManualIncrement()
+        {
+            if (ParikramaCount < TargetParikrama)
+            {
+                ParikramaCount++;
+                parikramaTracker.ManualSetCount(parikramaCount);
+                HandleCompletion();
+            }
+        }
+
+        private void ManualDecrement()
+        {
+            if (ParikramaCount > 0)
+            {
+                ParikramaCount--;
+                TargetReached = false;
+                parikramaTracker.ManualSetCount(parikramaCount);
+            }
+        }
+
+        private void HandleCompletion()
+        {
+            if (parikramaTracker.IsTargetReached && !TargetReached)
+            {
+                TargetReached = true;
+                _ = VibrateForTargetCompletionAsync();
+            }
+            else if (!TargetReached)
+            {
+                VibrateForParikramaCompletion();
+            }
         }
 
         // ── Vibration event callbacks ─────────────────────────────────────────────
@@ -224,9 +278,10 @@ namespace ParikramaCounter.ViewModels
             MainThread.BeginInvokeOnMainThread(() =>
             {
 #if DEBUG
-                System.Diagnostics.Debug.WriteLine("🔔 3rd side completed (250°–290°)");
+                System.Diagnostics.Debug.WriteLine("🔔 3rd side completed");
 #endif
-                VibrateForThirdSide();
+                if (settings.EnableVibrations)
+                    Vibrate(settings.ThirdSideVibrationMs);
             });
         }
 
@@ -235,28 +290,18 @@ namespace ParikramaCounter.ViewModels
             MainThread.BeginInvokeOnMainThread(() =>
             {
 #if DEBUG
-                System.Diagnostics.Debug.WriteLine("⚠️ Approaching start (320°–350°)");
+                System.Diagnostics.Debug.WriteLine("⚠️ Approaching start point");
 #endif
-                VibrateForApproachingStart();
+                if (settings.EnableVibrations)
+                    Vibrate(settings.ApproachingStartVibrationMs);
             });
         }
 
-        // ── Vibration methods ─────────────────────────────────────────────────────
+        // ── Vibration helpers ─────────────────────────────────────────────────────
 
-        private void VibrateForThirdSide()
+        private void Vibrate(int ms)
         {
-            try { Vibration.Default.Vibrate(TimeSpan.FromMilliseconds(400)); }
-            catch (Exception ex)
-            {
-#if DEBUG
-                System.Diagnostics.Debug.WriteLine($"Vibration error: {ex.Message}");
-#endif
-            }
-        }
-
-        private void VibrateForApproachingStart()
-        {
-            try { Vibration.Default.Vibrate(TimeSpan.FromMilliseconds(200)); }
+            try { Vibration.Default.Vibrate(TimeSpan.FromMilliseconds(ms)); }
             catch (Exception ex)
             {
 #if DEBUG
@@ -267,23 +312,18 @@ namespace ParikramaCounter.ViewModels
 
         private void VibrateForParikramaCompletion()
         {
-            try { Vibration.Default.Vibrate(TimeSpan.FromMilliseconds(500)); }
-            catch (Exception ex)
-            {
-#if DEBUG
-                System.Diagnostics.Debug.WriteLine($"Vibration error: {ex.Message}");
-#endif
-            }
+            if (settings.EnableVibrations) Vibrate(settings.CompletionVibrationMs);
         }
 
         private async Task VibrateForTargetCompletionAsync()
         {
+            if (!settings.EnableVibrations) return;
             try
             {
-                for (int i = 0; i < 3; i++)
+                for (int i = 0; i < settings.TargetVibrationCount; i++)
                 {
-                    Vibration.Default.Vibrate(TimeSpan.FromMilliseconds(300));
-                    await Task.Delay(500);
+                    Vibration.Default.Vibrate(TimeSpan.FromMilliseconds(settings.TargetVibrationMs));
+                    await Task.Delay(settings.TargetVibrationMs + 200);
                 }
             }
             catch (Exception ex)
@@ -294,42 +334,27 @@ namespace ParikramaCounter.ViewModels
             }
         }
 
-        // ── Commands ──────────────────────────────────────────────────────────────
+        // ── Commands impl ─────────────────────────────────────────────────────────
 
         private void StartStop()
         {
-            if (IsTracking)
-            {
-                sensorService.Stop();
-                IsTracking = false;
-            }
-            else
-            {
-                sensorService.Start();
-                IsTracking = true;
-            }
+            if (IsTracking) { sensorService.Stop();  IsTracking = false; }
+            else            { sensorService.Start(); IsTracking = true;  }
         }
 
         private void Reset()
         {
-            if (IsTracking)
-            {
-                sensorService.Stop();
-                IsTracking = false;
-            }
-
+            if (IsTracking) { sensorService.Stop(); IsTracking = false; }
             fusionEngine.Reset();
             parikramaTracker.Reset();
-
-            Steps          = 0;
-            ParikramaCount = 0;
-            TargetReached  = false;
-            MovementStatus = "Stationary";
-            SidesInfo      = $"0/{TotalSides} sides";
+            ParikramaCount  = 0;
+            TargetReached   = false;
+            MovementStatus  = "Stationary";
+            SidesInfo       = $"0/{TotalSides} sides";
             CircleDirection = "Determining...";
             CircleProgress  = 0;
             StepsInCircle   = 0;
-
+            Steps           = 0;
             UpdateProgress();
         }
 
@@ -340,16 +365,15 @@ namespace ParikramaCounter.ViewModels
                 : 0;
         }
 
+        private void SaveCount() => Preferences.Set("ParikramaCount", parikramaCount);
+
         // ── IDisposable ───────────────────────────────────────────────────────────
 
         public void Dispose()
         {
             if (disposed) return;
             disposed = true;
-
-            if (isTracking)
-                sensorService.Stop();
-
+            if (isTracking) sensorService.Stop();
             sensorService.SensorDataReceived      -= OnSensorDataReceived;
             parikramaTracker.OnThirdSideCompleted -= OnThirdSideCompleted;
             parikramaTracker.OnApproachingStart   -= OnApproachingStart;
