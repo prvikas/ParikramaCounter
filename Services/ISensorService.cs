@@ -7,12 +7,14 @@ namespace ParikramaCounter.Services
         void Start();
         void Stop();
 
-        // Raw sensor arrays: accel (m/s²), gyro (rad/s), mag (µT)
         event Action<double[], double[], double[]> SensorDataReceived;
 
-        // Hardware step count — updated by CMPedometer on iOS, StepDetector on Android.
-        // Separate from the raw sensor event so iOS pedometer updates don't force
-        // a full sensor dispatch and the gyro[0] encoding hack is eliminated.
+        // Step count readable by the fusion engine on any platform.
         int HardwareStepCount { get; }
+
+        // Fix #1 (layer inversion): engine calls this instead of casting to the
+        // concrete Android type. Both platforms implement it — Android writes through
+        // to the backing field, iOS is a no-op (CMPedometer updates the field directly).
+        void UpdateStepCount(int count);
     }
 }

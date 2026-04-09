@@ -5,8 +5,6 @@ using System;
 using ParikramaCounter.Services;
 using AndroidApp = Android.App;
 
-[assembly: Microsoft.Maui.Controls.Dependency(typeof(ParikramaCounter.Platforms.Android.AndroidSensorService))]
-
 namespace ParikramaCounter.Platforms.Android
 {
     public class AndroidSensorService : Java.Lang.Object, ISensorEventListener, ISensorService
@@ -22,9 +20,10 @@ namespace ParikramaCounter.Platforms.Android
         private bool hasMag   = false;
         private bool isRunning = false;
 
-        // HardwareStepCount on Android mirrors StepDetector — updated by SensorFusionEngine
         public int HardwareStepCount { get; private set; }
-        public void UpdateHardwareStepCount(int count) { HardwareStepCount = count; }
+
+        // Fix #1: called by SensorFusionEngine via ISensorService — no more #if ANDROID cast
+        public void UpdateStepCount(int count) => HardwareStepCount = count;
 
         public event Action<double[], double[], double[]> SensorDataReceived;
 

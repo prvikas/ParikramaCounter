@@ -1,38 +1,37 @@
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Maui;
 using Microsoft.Maui.Controls;
-using Microsoft.Extensions.DependencyInjection;
+using ParikramaCounter.Services;
 using ParikramaCounter.ViewModels;
 
 namespace ParikramaCounter
 {
     public partial class App : Application
     {
-        // MAUI resolves App via reflection using the DI container.
-        // We store references only for the Destroying lifecycle hook.
-        private TrackingViewModel    trackingViewModel;
-        private DiagnosticsViewModel diagnosticsViewModel;
+        private ISensorLifecycleService? lifecycleService;
+        private TrackingViewModel?       trackingViewModel;
+        private DiagnosticsViewModel?    diagnosticsViewModel;
 
-        // Parameterless constructor path for MAUI bootstrapper compatibility.
-        // Real instances are pulled from the service provider after build.
-        public App()
-        {
-            InitializeComponent();
-        }
+        public App() { InitializeComponent(); }
 
         protected override Window CreateWindow(IActivationState? activationState)
         {
-            // Resolve singletons now that the DI container is fully built
-            trackingViewModel    = IPlatformApplication.Current?.Services.GetService<TrackingViewModel>();
-            diagnosticsViewModel = IPlatformApplication.Current?.Services.GetService<DiagnosticsViewModel>();
+            var sp = IPlatformApplication.Current!.Services;
+            lifecycleService     = sp.GetRequiredService<ISensorLifecycleService>();
+            trackingViewModel    = sp.GetRequiredService<TrackingViewModel>();
+            diagnosticsViewModel = sp.GetRequiredService<DiagnosticsViewModel>();
+
+            // Fix #4: sensor hardware starts with the app — not gated behind Start button.
+            // TrackingViewModel controls whether the tracker processes data, not the hardware.
+            lifecycleService.Activate();
 
             var window = new Window(new AppShell());
-
             window.Destroying += (_, _) =>
             {
+                lifecycleService?.Deactivate();
                 trackingViewModel?.Dispose();
                 diagnosticsViewModel?.Dispose();
             };
-
             return window;
         }
     }

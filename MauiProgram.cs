@@ -1,4 +1,5 @@
 using Microsoft.Extensions.Logging;
+using ParikramaCounter.Repositories;
 using ParikramaCounter.Services;
 using ParikramaCounter.ViewModels;
 
@@ -19,7 +20,7 @@ namespace ParikramaCounter
                 .UseMauiApp<App>()
                 .ConfigureFonts(fonts =>
                 {
-                    fonts.AddFont("OpenSans-Regular.ttf", "OpenSansRegular");
+                    fonts.AddFont("OpenSans-Regular.ttf",  "OpenSansRegular");
                     fonts.AddFont("OpenSans-Semibold.ttf", "OpenSansSemibold");
                 });
 
@@ -27,40 +28,38 @@ namespace ParikramaCounter
             builder.Logging.AddDebug();
 #endif
 
+            // ── Platform sensor service ───────────────────────────────────────────
 #if ANDROID
             builder.Services.AddSingleton<ISensorService, AndroidSensorService>();
 #elif IOS
             builder.Services.AddSingleton<ISensorService, iOSSensorService>();
 #endif
 
-            // Shared engine — wire SensorService reference after both are created
-            builder.Services.AddSingleton<SensorFusionEngine>(sp =>
-            {
-                var engine  = new SensorFusionEngine();
-                var svc     = sp.GetRequiredService<ISensorService>();
-                engine.SensorService = svc;
-                return engine;
-            });
+            // ── Fix #2/#8: engine uses interface + constructor injection ────────────
+            builder.Services.AddSingleton<ISensorFusionEngine, SensorFusionEngine>(sp =>
+                new SensorFusionEngine(sp.GetRequiredService<ISensorService>()));
 
-            // Settings loads persisted prefs on construction; created first so
-            // TrackingViewModel can receive it at construction time
-            builder.Services.AddSingleton<SettingsViewModel>(sp =>
-                new SettingsViewModel(sp.GetRequiredService<SensorFusionEngine>()));
+            // ── Fix #4: declared sensor lifecycle owner ───────────────────────────
+            builder.Services.AddSingleton<ISensorLifecycleService, SensorLifecycleService>();
 
-            // TrackingViewModel receives settings so it reads vibration config live
-            builder.Services.AddSingleton<TrackingViewModel>(sp =>
-                new TrackingViewModel(
-                    sp.GetRequiredService<ISensorService>(),
-                    sp.GetRequiredService<SensorFusionEngine>(),
-                    sp.GetRequiredService<SettingsViewModel>()));
+            // ── Fix #6: centralised preferences ──────────────────────────────────
+            builder.Services.AddSingleton<IAppPreferences, AppPreferences>();
 
-            // DiagnosticsViewModel reads heading from the shared TrackingViewModel
-            builder.Services.AddSingleton<DiagnosticsViewModel>(sp =>
-                new DiagnosticsViewModel(
-                    sp.GetRequiredService<ISensorService>(),
-                    sp.GetRequiredService<TrackingViewModel>()));
+            // ── Fix #5: vibration service ─────────────────────────────────────────
+            builder.Services.AddSingleton<IVibrationService, VibrationService>();
 
-            // Pages
+            // ── Fix #12: session repository ───────────────────────────────────────
+            builder.Services.AddSingleton<ISessionRepository, JsonSessionRepository>();
+
+            // ── Fix #5: session service ───────────────────────────────────────────
+            builder.Services.AddSingleton<PradhakshinaSessionService>();
+
+            // ── ViewModels ────────────────────────────────────────────────────────
+            builder.Services.AddSingleton<SettingsViewModel>();
+            builder.Services.AddSingleton<TrackingViewModel>();
+            builder.Services.AddSingleton<DiagnosticsViewModel>();
+
+            // ── Pages ─────────────────────────────────────────────────────────────
             builder.Services.AddTransient<Views.TrackingPage>();
             builder.Services.AddTransient<Views.DiagnosticsPage>();
             builder.Services.AddTransient<Views.SettingsPage>();

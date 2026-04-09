@@ -2,115 +2,105 @@ using System;
 using System.Collections.Generic;
 using System.ComponentModel;
 using System.Runtime.CompilerServices;
-using System.Threading.Tasks;
 using System.Windows.Input;
 using Microsoft.Maui.Controls;
-using ParikramaCounter.Models;
 using ParikramaCounter.Services;
 
 namespace ParikramaCounter.ViewModels
 {
+    // Fix #5: TrackingViewModel is now a thin UI adapter.
+    // Session logic lives in PradhakshinaSessionService.
+    // Sensor lifecycle owned by SensorLifecycleService (started in App).
+    // Vibration owned by VibrationService.
+    // Preferences owned by IAppPreferences.
     public class TrackingViewModel : INotifyPropertyChanged, IDisposable
     {
-        private bool disposed = false;
+        private bool disposed;
 
-        private readonly ISensorService     sensorService;
-        private readonly SensorFusionEngine fusionEngine;
-        private readonly ParikramaTracker   parikramaTracker = new ParikramaTracker();
-        private readonly SettingsViewModel  settings;
+        private readonly ISensorService             sensorService;
+        private readonly ISensorFusionEngine        fusionEngine;
+        private readonly PradhakshinaSessionService session;
+        private readonly IAppPreferences            prefs;
+        private readonly SettingsViewModel          settings;
 
         private const int TotalSides = 4;
 
-        // Traditional pradhakshina counts used across temples.
-        // Backed by List<int> so IndexOf works correctly.
         public static readonly List<int> PresetTargets = new List<int>
             { 1, 3, 5, 7, 9, 11, 12, 21, 27, 54, 63, 108 };
 
         // ── Backing fields ────────────────────────────────────────────────────────
         private bool   isTracking;
-        private string heading          = "0°";
-        private string direction        = "N";
+        private string heading         = "0°";
+        private string direction       = "N";
         private int    steps;
         private int    parikramaCount;
-        private int    targetParikrama  = 7;
+        private int    targetParikrama;
         private double progressPercentage;
-        private string startStopButtonText = "Start";
+        private string startStopText   = "Start";
         private bool   targetReached;
-        private string movementStatus   = "Stationary";
-        private string sidesInfo        = $"0/{TotalSides} sides";
+        private string movementStatus  = "Stationary";
+        private string sidesInfo;
         private double circleProgress;
-        private string circleDirection  = "Determining...";
+        private string circleDirection = "Determining...";
         private int    stepsInCircle;
-        private string countModeLabel   = "Ascending";
+        private string countModeLabel  = "Ascending";
         private int    selectedPresetIndex;
+
+        private PropertyChangedEventHandler settingsChangedHandler;
 
         // ── Properties ────────────────────────────────────────────────────────────
 
         public bool IsTracking
         {
             get => isTracking;
-            set { isTracking = value; StartStopButtonText = value ? "Stop" : "Start"; OnPropertyChanged(); }
+            private set { isTracking = value; StartStopText = value ? "Stop" : "Start"; OnPropertyChanged(); }
         }
-
-        public string StartStopButtonText
-        {
-            get => startStopButtonText;
-            set { startStopButtonText = value; OnPropertyChanged(); }
-        }
-
-        public string Heading
-        {
-            get => heading;
-            set { heading = value; OnPropertyChanged(); }
-        }
-
-        public string Direction
-        {
-            get => direction;
-            set { direction = value; OnPropertyChanged(); }
-        }
-
-        public int Steps
-        {
-            get => steps;
-            set { steps = value; OnPropertyChanged(); }
-        }
+        public string StartStopText        { get => startStopText;    private set { startStopText = value;    OnPropertyChanged(); } }
+        public string Heading              { get => heading;           private set { heading = value;           OnPropertyChanged(); } }
+        public string Direction            { get => direction;         private set { direction = value;         OnPropertyChanged(); } }
+        public int    Steps                { get => steps;             private set { steps = value;             OnPropertyChanged(); } }
+        public double ProgressPercentage   { get => progressPercentage;private set { progressPercentage = value;OnPropertyChanged(); } }
+        public bool   TargetReached        { get => targetReached;     private set { targetReached = value;     OnPropertyChanged(); } }
+        public string MovementStatus       { get => movementStatus;    private set { movementStatus = value;    OnPropertyChanged(); } }
+        public string SidesInfo            { get => sidesInfo;         private set { sidesInfo = value;         OnPropertyChanged(); } }
+        public double CircleProgress       { get => circleProgress;    private set { circleProgress = value;    OnPropertyChanged(); } }
+        public string CircleDirection      { get => circleDirection;   private set { circleDirection = value;   OnPropertyChanged(); } }
+        public int    StepsInCircle        { get => stepsInCircle;     private set { stepsInCircle = value;     OnPropertyChanged(); } }
+        public string CountModeLabel       { get => countModeLabel;    private set { countModeLabel = value;    OnPropertyChanged(); } }
 
         public int ParikramaCount
         {
             get => parikramaCount;
-            set
+            private set
             {
                 parikramaCount = value;
                 OnPropertyChanged();
                 OnPropertyChanged(nameof(RemainingParikramas));
                 OnPropertyChanged(nameof(DisplayCount));
                 UpdateProgress();
-                SaveCount();
             }
         }
-
-        public string DisplayCount => settings.IsDescendingMode
-            ? $"{Math.Max(0, TargetParikrama - parikramaCount)}"
-            : $"{parikramaCount}";
 
         public int TargetParikrama
         {
             get => targetParikrama;
-            set
+            private set
             {
-                if (value < 1) return;
                 targetParikrama = value;
-                parikramaTracker.TargetParikramaCount = value;
+                session.SetTarget(value);
                 OnPropertyChanged();
                 OnPropertyChanged(nameof(RemainingParikramas));
                 OnPropertyChanged(nameof(DisplayCount));
                 UpdateProgress();
-                Preferences.Set("TargetParikrama", value);
             }
         }
 
-        // Index into PresetTargets for the Picker — -1 means custom value
+        public string DisplayCount => prefs.IsDescendingMode
+            ? $"{Math.Max(0, targetParikrama - parikramaCount)}"
+            : $"{parikramaCount}";
+
+        public int RemainingParikramas => Math.Max(0, targetParikrama - parikramaCount);
+
         public int SelectedPresetIndex
         {
             get => selectedPresetIndex;
@@ -123,56 +113,6 @@ namespace ParikramaCounter.ViewModels
             }
         }
 
-        public int RemainingParikramas => Math.Max(0, TargetParikrama - ParikramaCount);
-
-        public double ProgressPercentage
-        {
-            get => progressPercentage;
-            set { progressPercentage = value; OnPropertyChanged(); }
-        }
-
-        public bool TargetReached
-        {
-            get => targetReached;
-            set { targetReached = value; OnPropertyChanged(); }
-        }
-
-        public string MovementStatus
-        {
-            get => movementStatus;
-            set { movementStatus = value; OnPropertyChanged(); }
-        }
-
-        public string SidesInfo
-        {
-            get => sidesInfo;
-            set { sidesInfo = value; OnPropertyChanged(); }
-        }
-
-        public double CircleProgress
-        {
-            get => circleProgress;
-            set { circleProgress = value; OnPropertyChanged(); }
-        }
-
-        public string CircleDirection
-        {
-            get => circleDirection;
-            set { circleDirection = value; OnPropertyChanged(); }
-        }
-
-        public int StepsInCircle
-        {
-            get => stepsInCircle;
-            set { stepsInCircle = value; OnPropertyChanged(); }
-        }
-
-        public string CountModeLabel
-        {
-            get => countModeLabel;
-            set { countModeLabel = value; OnPropertyChanged(); }
-        }
-
         // ── Commands ──────────────────────────────────────────────────────────────
 
         public ICommand StartStopCommand       { get; }
@@ -182,52 +122,54 @@ namespace ParikramaCounter.ViewModels
         public ICommand ToggleCountModeCommand { get; }
         public ICommand SetCustomTargetCommand { get; }
 
-        private PropertyChangedEventHandler settingsChangedHandler;
-
         // ── Constructor ───────────────────────────────────────────────────────────
 
-        public TrackingViewModel(ISensorService sensorService, SensorFusionEngine fusionEngine, SettingsViewModel settings)
+        public TrackingViewModel(
+            ISensorService             sensorService,
+            ISensorFusionEngine        fusionEngine,
+            PradhakshinaSessionService session,
+            IAppPreferences            prefs,
+            SettingsViewModel          settings)
         {
             this.sensorService = sensorService ?? throw new ArgumentNullException(nameof(sensorService));
             this.fusionEngine  = fusionEngine  ?? throw new ArgumentNullException(nameof(fusionEngine));
+            this.session       = session       ?? throw new ArgumentNullException(nameof(session));
+            this.prefs         = prefs         ?? throw new ArgumentNullException(nameof(prefs));
             this.settings      = settings      ?? throw new ArgumentNullException(nameof(settings));
 
-            this.sensorService.SensorDataReceived += OnSensorDataReceived;
-            parikramaTracker.OnThirdSideCompleted += OnThirdSideCompleted;
-            parikramaTracker.OnApproachingStart   += OnApproachingStart;
+            // Subscribe to session events
+            session.CountChanged      += OnCountChanged;
+            session.TargetReached     += OnTargetReached;
 
+            // Subscribe to raw sensor for display (heading, steps, movement)
+            sensorService.SensorDataReceived += OnSensorDataReceived;
+
+            // Track settings changes that affect display
             settingsChangedHandler = (_, e) =>
             {
                 if (e.PropertyName == nameof(SettingsViewModel.IsDescendingMode))
                 {
-                    CountModeLabel = settings.IsDescendingMode ? "Descending" : "Ascending";
+                    CountModeLabel = prefs.IsDescendingMode ? "Descending" : "Ascending";
                     OnPropertyChanged(nameof(DisplayCount));
                 }
             };
             settings.PropertyChanged += settingsChangedHandler;
 
             StartStopCommand       = new Command(StartStop);
-            ResetCommand           = new Command(Reset);
-            ManualIncrementCommand = new Command(ManualIncrement);
-            ManualDecrementCommand = new Command(ManualDecrement);
+            ResetCommand           = new Command(async () => await ResetAsync());
+            ManualIncrementCommand = new Command(async () => await session.ManualIncrementAsync(steps));
+            ManualDecrementCommand = new Command(() => session.ManualDecrement());
             ToggleCountModeCommand = new Command(() => settings.IsDescendingMode = !settings.IsDescendingMode);
             SetCustomTargetCommand = new Command<string>(SetCustomTarget);
 
-            // Restore persisted state via property setters so all notifications fire
-            int restoredTarget = Preferences.Get("TargetParikrama", 7);
-            int restoredCount  = Preferences.Get("ParikramaCount",  0);
-
-            targetParikrama = restoredTarget;
-            parikramaTracker.TargetParikramaCount = restoredTarget;
-
-            // Sync picker selection to restored target.
-            // Default to index 0 (value 1) if the saved target isn't in the preset list,
-            // to avoid SelectedIndex = -1 which crashes on Android Picker.
-            int presetIdx = PresetTargets.IndexOf(restoredTarget);
-            selectedPresetIndex = presetIdx >= 0 ? presetIdx : 0;
-
-            ParikramaCount = restoredCount;
-            CountModeLabel = settings.IsDescendingMode ? "Descending" : "Ascending";
+            // Restore state
+            targetParikrama     = prefs.TargetParikrama;
+            parikramaCount      = prefs.ParikramaCount;
+            sidesInfo           = $"0/{TotalSides} sides";
+            int idx             = PresetTargets.IndexOf(targetParikrama);
+            selectedPresetIndex = idx >= 0 ? idx : 0;
+            CountModeLabel      = prefs.IsDescendingMode ? "Descending" : "Ascending";
+            UpdateProgress();
         }
 
         // ── Sensor data handler ───────────────────────────────────────────────────
@@ -238,179 +180,84 @@ namespace ParikramaCounter.ViewModels
 
             MainThread.BeginInvokeOnMainThread(() =>
             {
-                Heading        = $"{data.Heading:F1}°";
-                Direction      = data.Direction;
-                Steps          = data.Steps;
+                Heading       = $"{data.Heading:F1}°";
+                Direction     = data.Direction;
+                Steps         = data.Steps;
                 MovementStatus = fusionEngine.IsMoving ? "🚶 Walking" : "🛑 Stationary";
 
-                // Only update parikrama progress display when actively tracking
                 if (isTracking)
                 {
-                    CircleProgress  = parikramaTracker.CurrentProgress;
-                    CircleDirection = parikramaTracker.GetDirection();
-                    StepsInCircle   = parikramaTracker.CurrentStepsInCircle;
-                    SidesInfo       = $"{parikramaTracker.SidesCompleted}/{TotalSides} sides";
-                }
+                    CircleProgress  = session.CurrentProgress;
+                    CircleDirection = session.GetDirection();
+                    StepsInCircle   = session.CurrentStepsInCircle;
+                    SidesInfo       = $"{session.SidesCompleted}/{TotalSides} sides";
 
-                if (!isTracking || !settings.AutoCountingEnabled) return;
-
-                bool completed = parikramaTracker.CheckAndUpdateParikrama(
-                    data.Heading, data.Steps, fusionEngine.IsMoving, data.Timestamp);
-
-                if (completed)
-                {
-#if DEBUG
-                    System.Diagnostics.Debug.WriteLine($"🎉 Pradhakshina #{parikramaTracker.ParikramaCount}");
-#endif
-                    ParikramaCount = parikramaTracker.ParikramaCount;
-                    HandleCompletion();
+                    // Delegate auto-counting to session service
+                    session.ProcessSensorData(data.Heading, data.Steps, fusionEngine.IsMoving, data.Timestamp);
                 }
             });
         }
 
-        // ── Manual counting ───────────────────────────────────────────────────────
+        // ── Session event handlers ────────────────────────────────────────────────
 
-        private void SetCustomTarget(string text)
+        private void OnCountChanged(int newCount)
         {
-            if (int.TryParse(text, out int value) && value > 0)
-            {
-                TargetParikrama = value;
-                // Update picker to show the matching preset, or deselect if custom
-                int idx = PresetTargets.IndexOf(value);
-                if (idx != selectedPresetIndex)
-                {
-                    selectedPresetIndex = idx;
-                    OnPropertyChanged(nameof(SelectedPresetIndex));
-                }
-            }
+            MainThread.BeginInvokeOnMainThread(() => ParikramaCount = newCount);
         }
 
-        private void ManualIncrement()
+        private void OnTargetReached()
         {
-            // Cap at TargetParikrama × 2 as a reasonable upper bound —
-            // no hardcoded number, scales with whatever target the devotee chose
-            int cap = Math.Max(TargetParikrama * 2, TargetParikrama + 10);
-            if (ParikramaCount >= cap) return;
-            ParikramaCount++;
-            parikramaTracker.ManualSetCount(parikramaCount);
-            HandleCompletion();
-        }
-
-        private void ManualDecrement()
-        {
-            if (ParikramaCount <= 0) return;
-            ParikramaCount--;
-            parikramaTracker.ManualSetCount(parikramaCount); // update tracker first
-            TargetReached = parikramaTracker.IsTargetReached; // then read state
-        }
-
-        private void HandleCompletion()
-        {
-            if (parikramaTracker.IsTargetReached && !TargetReached)
-            {
-                TargetReached = true;
-                _ = VibrateForTargetCompletionAsync();
-            }
-            else if (!TargetReached && parikramaCount > 1)
-            {
-                // Only vibrate for intermediate completions after the first count,
-                // so the first manual tap does not trigger an unexpected vibration
-                VibrateForParikramaCompletion();
-            }
-        }
-
-        // ── Vibration callbacks ───────────────────────────────────────────────────
-
-        private void OnThirdSideCompleted()
-        {
-            MainThread.BeginInvokeOnMainThread(() =>
-            {
-#if DEBUG
-                System.Diagnostics.Debug.WriteLine("🔔 3rd side completed");
-#endif
-                if (settings.EnableVibrations)
-                    Vibrate(settings.ThirdSideVibrationMs);
-            });
-        }
-
-        private void OnApproachingStart()
-        {
-            MainThread.BeginInvokeOnMainThread(() =>
-            {
-#if DEBUG
-                System.Diagnostics.Debug.WriteLine("⚠️ Approaching start point");
-#endif
-                if (settings.EnableVibrations)
-                    Vibrate(settings.ApproachingStartVibrationMs);
-            });
-        }
-
-        private void Vibrate(int ms)
-        {
-            try { Vibration.Default.Vibrate(TimeSpan.FromMilliseconds(ms)); }
-            catch (Exception ex)
-            {
-#if DEBUG
-                System.Diagnostics.Debug.WriteLine($"Vibration error: {ex.Message}");
-#endif
-            }
-        }
-
-        private void VibrateForParikramaCompletion()
-        {
-            if (settings.EnableVibrations) Vibrate(settings.CompletionVibrationMs);
-        }
-
-        private async Task VibrateForTargetCompletionAsync()
-        {
-            if (!settings.EnableVibrations) return;
-            try
-            {
-                for (int i = 0; i < settings.TargetVibrationCount; i++)
-                {
-                    Vibration.Default.Vibrate(TimeSpan.FromMilliseconds(settings.TargetVibrationMs));
-                    await Task.Delay(settings.TargetVibrationMs + 200);
-                }
-            }
-            catch (Exception ex)
-            {
-#if DEBUG
-                System.Diagnostics.Debug.WriteLine($"Vibration error: {ex.Message}");
-#endif
-            }
+            MainThread.BeginInvokeOnMainThread(() => TargetReached = true);
         }
 
         // ── Commands impl ─────────────────────────────────────────────────────────
 
         private void StartStop()
         {
-            if (IsTracking) { sensorService.Stop();  IsTracking = false; }
-            else            { sensorService.Start(); IsTracking = true;  }
+            if (IsTracking)
+            {
+                IsTracking = false;
+                _ = session.StopTrackingAsync(steps);
+            }
+            else
+            {
+                session.StartTracking();
+                IsTracking = true;
+            }
         }
 
-        private void Reset()
+        private async System.Threading.Tasks.Task ResetAsync()
         {
-            if (IsTracking) { sensorService.Stop(); IsTracking = false; }
-            fusionEngine.Reset();
-            parikramaTracker.Reset();
-            TargetReached   = false;
-            MovementStatus  = "Stationary";
-            SidesInfo       = $"0/{TotalSides} sides";
-            CircleDirection = "Determining...";
+            IsTracking  = false;
+            TargetReached = false;
             CircleProgress  = 0;
             StepsInCircle   = 0;
-            Steps           = 0;
-            ParikramaCount  = 0; // setter fires UpdateProgress + SaveCount
+            CircleDirection = "Determining...";
+            SidesInfo       = $"0/{TotalSides} sides";
+            MovementStatus  = "Stationary";
+            fusionEngine.Reset();
+            await session.ResetAsync();
+            ParikramaCount = 0;
+        }
+
+        private void SetCustomTarget(string text)
+        {
+            if (!int.TryParse(text, out int value) || value < 1) return;
+            TargetParikrama = value;
+            int idx = PresetTargets.IndexOf(value);
+            if (idx != selectedPresetIndex)
+            {
+                selectedPresetIndex = idx;
+                OnPropertyChanged(nameof(SelectedPresetIndex));
+            }
         }
 
         private void UpdateProgress()
         {
-            ProgressPercentage = TargetParikrama > 0
-                ? (double)ParikramaCount / TargetParikrama
+            ProgressPercentage = targetParikrama > 0
+                ? (double)parikramaCount / targetParikrama
                 : 0;
         }
-
-        private void SaveCount() => Preferences.Set("ParikramaCount", parikramaCount);
 
         // ── IDisposable ───────────────────────────────────────────────────────────
 
@@ -418,14 +265,11 @@ namespace ParikramaCounter.ViewModels
         {
             if (disposed) return;
             disposed = true;
-            if (isTracking) sensorService.Stop();
-            sensorService.SensorDataReceived      -= OnSensorDataReceived;
-            parikramaTracker.OnThirdSideCompleted -= OnThirdSideCompleted;
-            parikramaTracker.OnApproachingStart   -= OnApproachingStart;
-            settings.PropertyChanged              -= settingsChangedHandler;
+            sensorService.SensorDataReceived -= OnSensorDataReceived;
+            session.CountChanged             -= OnCountChanged;
+            session.TargetReached            -= OnTargetReached;
+            settings.PropertyChanged         -= settingsChangedHandler;
         }
-
-        // ── INotifyPropertyChanged ────────────────────────────────────────────────
 
         public event PropertyChangedEventHandler PropertyChanged;
         protected void OnPropertyChanged([CallerMemberName] string name = null)

@@ -20,8 +20,11 @@ namespace ParikramaCounter.Platforms.iOS
         private bool hasAccel = false;
         private bool hasMag   = false;
 
-        // HardwareStepCount exposed via the interface — no longer smuggled through gyro[0]
         public int HardwareStepCount { get; private set; }
+
+        // Fix #1: no-op on iOS — CMPedometer updates HardwareStepCount directly.
+        // The interface requires the method; Android uses it, iOS ignores it.
+        public void UpdateStepCount(int count) { }
 
         public event Action<double[], double[], double[]> SensorDataReceived;
 

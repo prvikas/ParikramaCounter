@@ -4,10 +4,16 @@ namespace ParikramaCounter.Views
 {
     public partial class DiagnosticsPage : ContentPage
     {
-        public DiagnosticsPage(DiagnosticsViewModel viewModel)
+        private readonly DiagnosticsViewModel viewModel;
+
+        public DiagnosticsPage(DiagnosticsViewModel vm)
         {
             InitializeComponent();
-            BindingContext = viewModel;
+            BindingContext = viewModel = vm;
         }
+
+        // Fix #9: subscribe only while this tab is visible
+        protected override void OnAppearing()  { base.OnAppearing();  viewModel.Activate(); }
+        protected override void OnDisappearing(){ base.OnDisappearing(); viewModel.Deactivate(); }
     }
 }

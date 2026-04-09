@@ -1,15 +1,16 @@
 using System;
 using ParikramaCounter.Models;
-#if ANDROID
-using ParikramaCounter.Platforms.Android;
-#endif
 
 namespace ParikramaCounter.Services
 {
-    public class SensorFusionEngine
+    // Fix #2: implements ISensorFusionEngine so ViewModels depend on the interface.
+    // Fix #1: no longer casts to AndroidSensorService — calls ISensorService.UpdateStepCount()
+    // Fix #8: SensorService injected via constructor — no longer a mutable public property.
+    public class SensorFusionEngine : ISensorFusionEngine
     {
-        private readonly KalmanFilter headingFilter = new KalmanFilter(0.001, 0.5);
-        private readonly StepDetector stepDetector  = new StepDetector();
+        private readonly KalmanFilter  headingFilter;
+        private readonly StepDetector  stepDetector;
+        private readonly ISensorService sensorService;
 
         private const double GRAVITY_ALPHA = 0.8;
         private const double MAG_ALPHA     = 0.1;
@@ -17,13 +18,15 @@ namespace ParikramaCounter.Services
         private double[] gravity  = { 0.0, 0.0, 9.81 };
         private double[] magnetic = { 20.0, 0.0, 45.0 };
 
-        // Injected after construction so the engine can read the platform step count.
-        // ISensorService.HardwareStepCount is 0 on Android (StepDetector is used instead)
-        // and populated by CMPedometer on iOS.
-        public ISensorService SensorService { get; set; }
-
-        public bool IsMoving => stepDetector.IsMoving;
+        public bool IsMoving  => stepDetector.IsMoving;
         public int  StepCount => stepDetector.StepCount;
+
+        public SensorFusionEngine(ISensorService sensorService)
+        {
+            this.sensorService = sensorService ?? throw new ArgumentNullException(nameof(sensorService));
+            headingFilter = new KalmanFilter(0.001, 0.5);
+            stepDetector  = new StepDetector();
+        }
 
         public SensorData ProcessSensorData(double[] accel, double[] gyro, double[] mag)
         {
@@ -43,17 +46,14 @@ namespace ParikramaCounter.Services
             stepDetector.DetectStep(accelMag);
 
             int swSteps = stepDetector.StepCount;
-            int hwSteps = SensorService?.HardwareStepCount ?? 0;
 
-            // On Android, sync the hardware step count from StepDetector via the update method
-            // so HardwareStepCount is always consistent regardless of platform.
-#if ANDROID
-            if (SensorService is ParikramaCounter.Platforms.Android.AndroidSensorService androidSvc)
-                androidSvc.UpdateHardwareStepCount(swSteps);
-            hwSteps = swSteps;
-#endif
-            // On iOS, prefer CMPedometer (hwSteps) when available; fall back to StepDetector
-            int steps = hwSteps > 0 ? hwSteps : swSteps;
+            // Fix #1: no more #if ANDROID cast to concrete type.
+            // UpdateStepCount is defined on ISensorService — both platforms implement it.
+            // On Android it writes to the backing field; on iOS it's a no-op (CMPedometer owns the value).
+            sensorService.UpdateStepCount(swSteps);
+
+            int hwSteps = sensorService.HardwareStepCount;
+            int steps   = hwSteps > 0 ? hwSteps : swSteps;
 
             double heading         = CalculateTiltCompensatedHeading(gravity, magnetic);
             double filteredHeading = headingFilter.Update(heading);
@@ -63,12 +63,12 @@ namespace ParikramaCounter.Services
                 AccelX = accel[0], AccelY = accel[1], AccelZ = accel[2],
                 GyroX  = gyro[0],  GyroY  = gyro[1],  GyroZ  = gyro[2],
                 MagX   = magnetic[0], MagY = magnetic[1], MagZ = magnetic[2],
-                Heading      = filteredHeading,
-                TrueHeading  = filteredHeading,
-                Direction    = GetDirectionFromHeading(filteredHeading),
-                Steps        = steps,
+                Heading     = filteredHeading,
+                TrueHeading = filteredHeading,
+                Direction   = GetDirectionFromHeading(filteredHeading),
+                Steps       = steps,
                 AccelerationMagnitude = accelMag,
-                Timestamp    = DateTime.Now
+                Timestamp   = DateTime.Now
             };
         }
 
@@ -80,13 +80,15 @@ namespace ParikramaCounter.Services
             double pitch = Math.Asin(Math.Max(-1.0, Math.Min(1.0, -gx)));
             double roll  = Math.Atan2(gy, gz);
             double mX    = mag[0]*Math.Cos(pitch) + mag[2]*Math.Sin(pitch);
-            double mY    = mag[0]*Math.Sin(roll)*Math.Sin(pitch) + mag[1]*Math.Cos(roll) - mag[2]*Math.Sin(roll)*Math.Cos(pitch);
+            double mY    = mag[0]*Math.Sin(roll)*Math.Sin(pitch)
+                         + mag[1]*Math.Cos(roll)
+                         - mag[2]*Math.Sin(roll)*Math.Cos(pitch);
             double h     = Math.Atan2(mY, mX) * (180.0 / Math.PI);
             if (h < 0) h += 360.0;
             return h;
         }
 
-        private string GetDirectionFromHeading(double heading)
+        private static string GetDirectionFromHeading(double heading)
         {
             string[] d = { "N", "NE", "E", "SE", "S", "SW", "W", "NW" };
             return d[(int)Math.Round(heading / 45.0) % 8];
@@ -100,8 +102,13 @@ namespace ParikramaCounter.Services
             magnetic = new double[] { 20.0, 0.0, 45.0 };
         }
 
+        public void ResetForCalibration()
+        {
+            headingFilter.Reset();
+            magnetic = new double[] { 20.0, 0.0, 45.0 };
+        }
+
         public void UpdateStepThreshold(int threshold) => stepDetector.SetThresholdMultiplier(threshold / 100.0);
         public void UpdateMinStepInterval(int ms)       => stepDetector.SetMinStepInterval(ms);
-        public void ResetForCalibration()              { headingFilter.Reset(); magnetic = new double[] { 20.0, 0.0, 45.0 }; }
     }
 }
