@@ -17,11 +17,23 @@ namespace ParikramaCounter.Models
         public double CurrentProgress => headingTracker.GetProgress();
         public int CurrentStepsInCircle { get; private set; }
 
+        // SidesCompleted: 0-4 quadrant tracking based on heading progress
+        public int SidesCompleted => (int)(headingTracker.GetProgress() / 90.0);
+
         public bool IsTargetReached => ParikramaCount >= TargetParikramaCount;
         public int RemainingParikramas => Math.Max(0, TargetParikramaCount - ParikramaCount);
         public double ProgressPercentage => TargetParikramaCount > 0
             ? (double)ParikramaCount / TargetParikramaCount * 100
             : 0;
+
+        // Fired when the walker completes the 3rd side (270° mark)
+        public event Action OnThirdSideCompleted;
+
+        // Fired when the walker is within ~30° of completing the circle
+        public event Action OnApproachingStart;
+
+        private bool thirdSideFired = false;
+        private bool approachingStartFired = false;
 
         public bool CheckAndUpdateParikrama(double currentHeading, int totalSteps, bool isMoving, DateTime timestamp)
         {
@@ -31,6 +43,19 @@ namespace ParikramaCounter.Models
 
             // Update heading tracker
             headingTracker.Update(currentHeading, timestamp);
+
+            // Fire vibration events at meaningful progress milestones
+            double progress = headingTracker.GetProgress();
+            if (!thirdSideFired && progress >= 270.0)
+            {
+                thirdSideFired = true;
+                OnThirdSideCompleted?.Invoke();
+            }
+            if (!approachingStartFired && progress >= 330.0)
+            {
+                approachingStartFired = true;
+                OnApproachingStart?.Invoke();
+            }
 
             // Track steps in current circle
             if (stepsAtStart == 0)
@@ -105,6 +130,8 @@ namespace ParikramaCounter.Models
             stepsAtStart = 0;
             CurrentStepsInCircle = 0;
             recentSteps.Clear();
+            thirdSideFired = false;
+            approachingStartFired = false;
         }
 
         public void Reset()

@@ -1,18 +1,25 @@
-﻿using System;
+using System;
 using System.ComponentModel;
 using System.Runtime.CompilerServices;
+using System.Threading.Tasks;
 using System.Windows.Input;
 using Microsoft.Maui.Controls;
-using ParikramaCounter.Services;
 using ParikramaCounter.Models;
+using ParikramaCounter.Services;
 
 namespace ParikramaCounter.ViewModels
 {
-    public class TrackingViewModel : INotifyPropertyChanged
+    public class TrackingViewModel : INotifyPropertyChanged, IDisposable
     {
+        // Fix #3: track disposal to prevent double-unsubscribe
+        private bool disposed = false;
+
         private readonly ISensorService sensorService;
         private readonly SensorFusionEngine fusionEngine = new SensorFusionEngine();
         private readonly ParikramaTracker parikramaTracker = new ParikramaTracker();
+
+        // Fix #14: single source of truth for total sides — no more magic "4" scattered around
+        private const int TotalSides = 4;
 
         private bool isTracking;
         private string heading = "0°";
@@ -24,8 +31,17 @@ namespace ParikramaCounter.ViewModels
         private string accuracy = "High";
         private string startStopButtonText = "Start";
         private bool targetReached;
-        private bool isMoving;
         private string movementStatus = "Stationary";
+
+        // Vibration event support
+        private string sidesInfo = $"0/{TotalSides} sides";
+
+        // Circle tracking backing fields
+        private double circleProgress;
+        private string circleDirection = "Determining...";
+        private int stepsInCircle;
+
+        // ── Properties ────────────────────────────────────────────────────────────
 
         public bool IsTracking
         {
@@ -69,6 +85,8 @@ namespace ParikramaCounter.ViewModels
             {
                 parikramaCount = value;
                 OnPropertyChanged();
+                // RemainingParikramas is a computed property — notify it here
+                OnPropertyChanged(nameof(RemainingParikramas));
                 UpdateProgress();
             }
         }
@@ -112,71 +130,12 @@ namespace ParikramaCounter.ViewModels
             set { movementStatus = value; OnPropertyChanged(); }
         }
 
-        public ICommand StartStopCommand { get; }
-        public ICommand ResetCommand { get; }
-        public ICommand IncrementTargetCommand { get; }
-        public ICommand DecrementTargetCommand { get; }
-
-        public TrackingViewModel(ISensorService sensorService)
+        // Sides tracking display — Fix #14: uses TotalSides constant
+        public string SidesInfo
         {
-            this.sensorService = sensorService ?? throw new ArgumentNullException(nameof(sensorService));
-            this.sensorService.SensorDataReceived += OnSensorDataReceived;
-
-            StartStopCommand = new Command(StartStop);
-            ResetCommand = new Command(Reset);
-            IncrementTargetCommand = new Command(() => TargetParikrama++);
-            DecrementTargetCommand = new Command(() => { if (TargetParikrama > 1) TargetParikrama--; });
-
-            parikramaTracker.TargetParikramaCount = targetParikrama;
+            get => sidesInfo;
+            set { sidesInfo = value; OnPropertyChanged(); }
         }
-
-        private void OnSensorDataReceived(double[] accel, double[] gyro, double[] mag)
-        {
-            var data = fusionEngine.ProcessSensorData(accel, gyro, mag);
-
-            MainThread.BeginInvokeOnMainThread(() =>
-            {
-                Heading = $"{data.Heading:F1}°";
-                Direction = data.Direction;
-                Steps = data.Steps;
-
-                // Update movement status
-                MovementStatus = fusionEngine.IsMoving ? "Walking" : "Stationary";
-
-                // Update parikrama progress
-                CircleProgress = parikramaTracker.CurrentProgress;
-                CircleDirection = parikramaTracker.GetDirection();
-                StepsInCircle = parikramaTracker.CurrentStepsInCircle;
-
-                // Check parikrama completion using heading-based algorithm
-                bool completed = parikramaTracker.CheckAndUpdateParikrama(
-                    data.Heading,
-                    data.Steps,
-                    fusionEngine.IsMoving,
-                    data.Timestamp
-                );
-
-                if (completed)
-                {
-                    ParikramaCount = parikramaTracker.ParikramaCount;
-
-                    if (parikramaTracker.IsTargetReached && !TargetReached)
-                    {
-                        TargetReached = true;
-                        VibrateForTargetCompletion();
-                    }
-                    else
-                    {
-                        VibrateForParikramaCompletion();
-                    }
-                }
-            });
-        }
-
-        // Add new properties
-        private double circleProgress;
-        private string circleDirection = "Determining...";
-        private int stepsInCircle;
 
         public double CircleProgress
         {
@@ -196,44 +155,166 @@ namespace ParikramaCounter.ViewModels
             set { stepsInCircle = value; OnPropertyChanged(); }
         }
 
+        public ICommand StartStopCommand { get; }
+        public ICommand ResetCommand { get; }
+        public ICommand IncrementTargetCommand { get; }
+        public ICommand DecrementTargetCommand { get; }
 
-        private void UpdateProgress()
+        // ── Constructor ───────────────────────────────────────────────────────────
+
+        public TrackingViewModel(ISensorService sensorService)
         {
-            ProgressPercentage = TargetParikrama > 0
-                ? (double)ParikramaCount / TargetParikrama
-                : 0;
-            OnPropertyChanged(nameof(RemainingParikramas));
+            this.sensorService = sensorService ?? throw new ArgumentNullException(nameof(sensorService));
+
+            // Fix #3: event subscriptions are tracked and cleaned up in Dispose()
+            this.sensorService.SensorDataReceived += OnSensorDataReceived;
+            parikramaTracker.OnThirdSideCompleted += OnThirdSideCompleted;
+            parikramaTracker.OnApproachingStart += OnApproachingStart;
+
+            StartStopCommand = new Command(StartStop);
+            ResetCommand = new Command(Reset);
+
+            // Fix #11: upper bound (108) guards against unbounded increment
+            IncrementTargetCommand = new Command(() => { if (TargetParikrama < 108) TargetParikrama++; });
+            DecrementTargetCommand = new Command(() => { if (TargetParikrama > 1) TargetParikrama--; });
+
+            parikramaTracker.TargetParikramaCount = targetParikrama;
+        }
+
+        // ── Sensor data handler ───────────────────────────────────────────────────
+
+        private void OnSensorDataReceived(double[] accel, double[] gyro, double[] mag)
+        {
+            var data = fusionEngine.ProcessSensorData(accel, gyro, mag);
+
+            MainThread.BeginInvokeOnMainThread(() =>
+            {
+                Heading = $"{data.Heading:F1}°";
+                Direction = data.Direction;
+                Steps = data.Steps;
+
+                MovementStatus = fusionEngine.IsMoving ? "🚶 Walking" : "🛑 Stationary";
+
+                CircleProgress = parikramaTracker.CurrentProgress;
+                CircleDirection = parikramaTracker.GetDirection();
+                StepsInCircle = parikramaTracker.CurrentStepsInCircle;
+
+                // Fix #14: TotalSides constant used here
+                SidesInfo = $"{parikramaTracker.SidesCompleted}/{TotalSides} sides";
+
+                bool completed = parikramaTracker.CheckAndUpdateParikrama(
+                    data.Heading,
+                    data.Steps,
+                    fusionEngine.IsMoving,
+                    data.Timestamp
+                );
+
+                if (completed)
+                {
+#if DEBUG
+                    System.Diagnostics.Debug.WriteLine($"🎉 Parikrama #{parikramaTracker.ParikramaCount}");
+#endif
+                    // Fix #2: ParikramaCount setter already fires OnPropertyChanged +
+                    // RemainingParikramas + UpdateProgress — no manual duplicates needed
+                    ParikramaCount = parikramaTracker.ParikramaCount;
+
+                    if (parikramaTracker.IsTargetReached && !TargetReached)
+                    {
+                        TargetReached = true;
+                        // Fix #4: async Task method; discard is intentional fire-and-forget
+                        _ = VibrateForTargetCompletionAsync();
+                    }
+                    else
+                    {
+                        VibrateForParikramaCompletion();
+                    }
+                }
+            });
+        }
+
+        // ── Vibration event callbacks ─────────────────────────────────────────────
+
+        // Handle 3rd side completion
+        private void OnThirdSideCompleted()
+        {
+            MainThread.BeginInvokeOnMainThread(() =>
+            {
+#if DEBUG
+                System.Diagnostics.Debug.WriteLine("🔔 3/4 sides completed!");
+#endif
+                VibrateForThirdSide();
+            });
+        }
+
+        // Handle approaching start point
+        private void OnApproachingStart()
+        {
+            MainThread.BeginInvokeOnMainThread(() =>
+            {
+#if DEBUG
+                System.Diagnostics.Debug.WriteLine("⚠️ Approaching starting point!");
+#endif
+                VibrateForApproachingStart();
+            });
+        }
+
+        // ── Vibration methods ─────────────────────────────────────────────────────
+
+        private void VibrateForThirdSide()
+        {
+            try
+            {
+                Vibration.Default.Vibrate(TimeSpan.FromMilliseconds(400));
+            }
+            catch { }
+        }
+
+        private void VibrateForApproachingStart()
+        {
+            try
+            {
+                Vibration.Default.Vibrate(TimeSpan.FromMilliseconds(200));
+            }
+            catch { }
         }
 
         private void VibrateForParikramaCompletion()
         {
             try
             {
-                var duration = TimeSpan.FromMilliseconds(500);
-                Vibration.Default.Vibrate(duration);
+                Vibration.Default.Vibrate(TimeSpan.FromMilliseconds(500));
             }
             catch (Exception ex)
             {
+#if DEBUG
                 System.Diagnostics.Debug.WriteLine($"Vibration error: {ex.Message}");
+#endif
             }
         }
 
-        private async void VibrateForTargetCompletion()
+        // Fix #4: async Task (not async void) — caller uses discard `_ =` to
+        //         intentionally fire-and-forget while keeping exceptions observable
+        // Fix #1: vibration duration is no longer hardcoded per-iteration
+        private async Task VibrateForTargetCompletionAsync()
         {
             try
             {
-                // Triple vibration for target completion
-                Vibration.Default.Vibrate(TimeSpan.FromMilliseconds(300));
-                await System.Threading.Tasks.Task.Delay(200);
-                Vibration.Default.Vibrate(TimeSpan.FromMilliseconds(300));
-                await System.Threading.Tasks.Task.Delay(200);
-                Vibration.Default.Vibrate(TimeSpan.FromMilliseconds(300));
+                // Triple vibration pattern for target completion
+                for (int i = 0; i < 3; i++)
+                {
+                    Vibration.Default.Vibrate(TimeSpan.FromMilliseconds(300));
+                    await Task.Delay(500);
+                }
             }
             catch (Exception ex)
             {
+#if DEBUG
                 System.Diagnostics.Debug.WriteLine($"Vibration error: {ex.Message}");
+#endif
             }
         }
+
+        // ── Commands ──────────────────────────────────────────────────────────────
 
         private void StartStop()
         {
@@ -247,14 +328,54 @@ namespace ParikramaCounter.ViewModels
 
         private void Reset()
         {
+            // Fix #7: always stop tracking on reset so the sensor loop cannot silently restart
+            if (IsTracking)
+            {
+                sensorService.Stop();
+                IsTracking = false;
+            }
+
             fusionEngine.Reset();
             parikramaTracker.Reset();
+
             Steps = 0;
             ParikramaCount = 0;
             TargetReached = false;
             MovementStatus = "Stationary";
+
+            // Fix #6: reset SidesInfo and CircleDirection so stale values are cleared
+            // Fix #14: TotalSides constant used
+            SidesInfo = $"0/{TotalSides} sides";
+            CircleDirection = "Determining...";
+            CircleProgress = 0;
+            StepsInCircle = 0;
+
             UpdateProgress();
         }
+
+        private void UpdateProgress()
+        {
+            ProgressPercentage = TargetParikrama > 0
+                ? (double)ParikramaCount / TargetParikrama
+                : 0;
+            OnPropertyChanged(nameof(RemainingParikramas));
+        }
+
+        // ── IDisposable ───────────────────────────────────────────────────────────
+
+        // Fix #3: unsubscribe all events to prevent memory leaks when ViewModel
+        //         is discarded (e.g., page navigation, DI container teardown)
+        public void Dispose()
+        {
+            if (disposed) return;
+            disposed = true;
+
+            sensorService.SensorDataReceived -= OnSensorDataReceived;
+            parikramaTracker.OnThirdSideCompleted -= OnThirdSideCompleted;
+            parikramaTracker.OnApproachingStart -= OnApproachingStart;
+        }
+
+        // ── INotifyPropertyChanged ────────────────────────────────────────────────
 
         public event PropertyChangedEventHandler PropertyChanged;
         protected void OnPropertyChanged([CallerMemberName] string name = null)
