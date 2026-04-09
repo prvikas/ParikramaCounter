@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.ComponentModel;
 using System.Runtime.CompilerServices;
 using System.Threading.Tasks;
@@ -13,12 +14,17 @@ namespace ParikramaCounter.ViewModels
     {
         private bool disposed = false;
 
-        private readonly ISensorService    sensorService;
+        private readonly ISensorService     sensorService;
         private readonly SensorFusionEngine fusionEngine;
-        private readonly ParikramaTracker  parikramaTracker = new ParikramaTracker();
-        private readonly SettingsViewModel settings;
+        private readonly ParikramaTracker   parikramaTracker = new ParikramaTracker();
+        private readonly SettingsViewModel  settings;
 
         private const int TotalSides = 4;
+
+        // Traditional pradhakshina counts used across temples.
+        // Backed by List<int> so IndexOf works correctly.
+        public static readonly List<int> PresetTargets = new List<int>
+            { 1, 3, 5, 7, 9, 11, 12, 21, 27, 54, 63, 108 };
 
         // ── Backing fields ────────────────────────────────────────────────────────
         private bool   isTracking;
@@ -36,6 +42,7 @@ namespace ParikramaCounter.ViewModels
         private string circleDirection  = "Determining...";
         private int    stepsInCircle;
         private string countModeLabel   = "Ascending";
+        private int    selectedPresetIndex;
 
         // ── Properties ────────────────────────────────────────────────────────────
 
@@ -83,7 +90,6 @@ namespace ParikramaCounter.ViewModels
             }
         }
 
-        // DisplayCount shows the count differently for ascending vs descending mode
         public string DisplayCount => settings.IsDescendingMode
             ? $"{Math.Max(0, TargetParikrama - parikramaCount)}"
             : $"{parikramaCount}";
@@ -93,6 +99,7 @@ namespace ParikramaCounter.ViewModels
             get => targetParikrama;
             set
             {
+                if (value < 1) return;
                 targetParikrama = value;
                 parikramaTracker.TargetParikramaCount = value;
                 OnPropertyChanged();
@@ -100,6 +107,19 @@ namespace ParikramaCounter.ViewModels
                 OnPropertyChanged(nameof(DisplayCount));
                 UpdateProgress();
                 Preferences.Set("TargetParikrama", value);
+            }
+        }
+
+        // Index into PresetTargets for the Picker — -1 means custom value
+        public int SelectedPresetIndex
+        {
+            get => selectedPresetIndex;
+            set
+            {
+                selectedPresetIndex = value;
+                OnPropertyChanged();
+                if (value >= 0 && value < PresetTargets.Count)
+                    TargetParikrama = PresetTargets[value];
             }
         }
 
@@ -155,13 +175,12 @@ namespace ParikramaCounter.ViewModels
 
         // ── Commands ──────────────────────────────────────────────────────────────
 
-        public ICommand StartStopCommand          { get; }
-        public ICommand ResetCommand              { get; }
-        public ICommand IncrementTargetCommand    { get; }
-        public ICommand DecrementTargetCommand    { get; }
-        public ICommand ManualIncrementCommand    { get; }   // manual +1 pradhakshina
-        public ICommand ManualDecrementCommand    { get; }   // manual -1 pradhakshina
-        public ICommand ToggleCountModeCommand    { get; }   // ascending ↔ descending
+        public ICommand StartStopCommand       { get; }
+        public ICommand ResetCommand           { get; }
+        public ICommand ManualIncrementCommand { get; }
+        public ICommand ManualDecrementCommand { get; }
+        public ICommand ToggleCountModeCommand { get; }
+        public ICommand SetCustomTargetCommand { get; }
 
         // ── Constructor ───────────────────────────────────────────────────────────
 
@@ -175,7 +194,6 @@ namespace ParikramaCounter.ViewModels
             parikramaTracker.OnThirdSideCompleted += OnThirdSideCompleted;
             parikramaTracker.OnApproachingStart   += OnApproachingStart;
 
-            // Settings changes that affect display need re-notification
             settings.PropertyChanged += (_, e) =>
             {
                 if (e.PropertyName == nameof(SettingsViewModel.IsDescendingMode))
@@ -187,25 +205,22 @@ namespace ParikramaCounter.ViewModels
 
             StartStopCommand       = new Command(StartStop);
             ResetCommand           = new Command(Reset);
-            IncrementTargetCommand = new Command(() => { if (TargetParikrama < 108) TargetParikrama++; });
-            DecrementTargetCommand = new Command(() => { if (TargetParikrama > 1)   TargetParikrama--; });
             ManualIncrementCommand = new Command(ManualIncrement);
             ManualDecrementCommand = new Command(ManualDecrement);
             ToggleCountModeCommand = new Command(() => settings.IsDescendingMode = !settings.IsDescendingMode);
+            SetCustomTargetCommand = new Command<string>(SetCustomTarget);
 
-            // Restore persisted state — use the property setters (not backing fields)
-            // so OnPropertyChanged, RemainingParikramas, DisplayCount, and UpdateProgress
-            // all fire correctly on startup.
+            // Restore persisted state via property setters so all notifications fire
             int restoredTarget = Preferences.Get("TargetParikrama", 7);
             int restoredCount  = Preferences.Get("ParikramaCount",  0);
 
-            // Set target first so tracker and progress are consistent when count is set
             targetParikrama = restoredTarget;
             parikramaTracker.TargetParikramaCount = restoredTarget;
 
-            // Set count via setter to fire all notifications
-            ParikramaCount = restoredCount;
+            // Sync picker selection to restored target (−1 = custom if not in presets)
+            selectedPresetIndex = PresetTargets.IndexOf(restoredTarget);
 
+            ParikramaCount = restoredCount;
             CountModeLabel = settings.IsDescendingMode ? "Descending" : "Ascending";
         }
 
@@ -227,7 +242,6 @@ namespace ParikramaCounter.ViewModels
                 StepsInCircle   = parikramaTracker.CurrentStepsInCircle;
                 SidesInfo       = $"{parikramaTracker.SidesCompleted}/{TotalSides} sides";
 
-                // Only auto-count when tracking is active AND auto-counting is enabled
                 if (!isTracking || !settings.AutoCountingEnabled) return;
 
                 bool completed = parikramaTracker.CheckAndUpdateParikrama(
@@ -246,11 +260,27 @@ namespace ParikramaCounter.ViewModels
 
         // ── Manual counting ───────────────────────────────────────────────────────
 
+        private void SetCustomTarget(string text)
+        {
+            if (int.TryParse(text, out int value) && value > 0)
+            {
+                TargetParikrama = value;
+                // Update picker to show the matching preset, or deselect if custom
+                int idx = PresetTargets.IndexOf(value);
+                if (idx != selectedPresetIndex)
+                {
+                    selectedPresetIndex = idx;
+                    OnPropertyChanged(nameof(SelectedPresetIndex));
+                }
+            }
+        }
+
         private void ManualIncrement()
         {
-            // Allow incrementing up to 108 (hard cap) even past target —
-            // a devotee may wish to do extra rounds
-            if (ParikramaCount >= 108) return;
+            // Cap at TargetParikrama × 2 as a reasonable upper bound —
+            // no hardcoded number, scales with whatever target the devotee chose
+            int cap = Math.Max(TargetParikrama * 2, TargetParikrama + 10);
+            if (ParikramaCount >= cap) return;
             ParikramaCount++;
             parikramaTracker.ManualSetCount(parikramaCount);
             HandleCompletion();
@@ -258,12 +288,10 @@ namespace ParikramaCounter.ViewModels
 
         private void ManualDecrement()
         {
-            if (ParikramaCount > 0)
-            {
-                ParikramaCount--;
-                TargetReached = false;
-                parikramaTracker.ManualSetCount(parikramaCount);
-            }
+            if (ParikramaCount <= 0) return;
+            ParikramaCount--;
+            TargetReached = parikramaTracker.IsTargetReached;
+            parikramaTracker.ManualSetCount(parikramaCount);
         }
 
         private void HandleCompletion()
@@ -279,7 +307,7 @@ namespace ParikramaCounter.ViewModels
             }
         }
 
-        // ── Vibration event callbacks ─────────────────────────────────────────────
+        // ── Vibration callbacks ───────────────────────────────────────────────────
 
         private void OnThirdSideCompleted()
         {
@@ -304,8 +332,6 @@ namespace ParikramaCounter.ViewModels
                     Vibrate(settings.ApproachingStartVibrationMs);
             });
         }
-
-        // ── Vibration helpers ─────────────────────────────────────────────────────
 
         private void Vibrate(int ms)
         {
@@ -362,7 +388,7 @@ namespace ParikramaCounter.ViewModels
             CircleProgress  = 0;
             StepsInCircle   = 0;
             Steps           = 0;
-            ParikramaCount  = 0; // setter calls UpdateProgress() and SaveCount()
+            ParikramaCount  = 0; // setter fires UpdateProgress + SaveCount
         }
 
         private void UpdateProgress()

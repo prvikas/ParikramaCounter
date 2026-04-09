@@ -15,11 +15,10 @@
             <Frame BackgroundColor="#1e293b" BorderColor="#8b5cf6" CornerRadius="20" Padding="24">
                 <VerticalStackLayout Spacing="8">
 
-                    <!-- Mode label -->
                     <Label Text="{Binding CountModeLabel}" FontSize="13"
                            TextColor="#94a3b8" HorizontalOptions="Center"/>
 
-                    <!-- Large count display -->
+                    <!-- Large pradhakshina count -->
                     <Label Text="{Binding DisplayCount}" FontSize="80" FontAttributes="Bold"
                            TextColor="#8b5cf6" HorizontalOptions="Center"
                            HorizontalTextAlignment="Center"/>
@@ -27,37 +26,70 @@
                     <Label Text="{Binding TargetParikrama, StringFormat='of {0}'}"
                            FontSize="16" TextColor="#64748b" HorizontalOptions="Center"/>
 
-                    <!-- Manual +/- count buttons -->
+                    <!-- Manual +/- buttons -->
                     <HorizontalStackLayout HorizontalOptions="Center" Spacing="24" Margin="0,8,0,0">
                         <Button Text="−" Command="{Binding ManualDecrementCommand}"
                                 BackgroundColor="#334155" TextColor="#94a3b8"
-                                WidthRequest="60" HeightRequest="60" CornerRadius="30" FontSize="28"/>
+                                WidthRequest="64" HeightRequest="64" CornerRadius="32" FontSize="30"/>
                         <Label Text="Manual" FontSize="13" TextColor="#64748b"
                                VerticalOptions="Center"/>
                         <Button Text="+" Command="{Binding ManualIncrementCommand}"
                                 BackgroundColor="#8b5cf6" TextColor="White"
-                                WidthRequest="60" HeightRequest="60" CornerRadius="30" FontSize="28"/>
+                                WidthRequest="64" HeightRequest="64" CornerRadius="32" FontSize="30"/>
                     </HorizontalStackLayout>
                 </VerticalStackLayout>
             </Frame>
 
-            <!-- Target setting -->
+            <!-- Target selection -->
             <Frame BackgroundColor="#1e293b" BorderColor="#6366f1" CornerRadius="15" Padding="16">
-                <VerticalStackLayout Spacing="8">
-                    <Label Text="Target" FontSize="13" TextColor="#94a3b8" HorizontalOptions="Center"/>
-                    <HorizontalStackLayout HorizontalOptions="Center" Spacing="16">
-                        <Button Text="−" Command="{Binding DecrementTargetCommand}"
-                                BackgroundColor="#1e293b" TextColor="#94a3b8"
-                                WidthRequest="44" HeightRequest="44" CornerRadius="22"
-                                BorderColor="#6366f1" BorderWidth="1" FontSize="22"/>
-                        <Label Text="{Binding TargetParikrama}" FontSize="36" FontAttributes="Bold"
-                               TextColor="#6366f1" VerticalOptions="Center"
-                               WidthRequest="70" HorizontalTextAlignment="Center"/>
-                        <Button Text="+" Command="{Binding IncrementTargetCommand}"
-                                BackgroundColor="#1e293b" TextColor="#94a3b8"
-                                WidthRequest="44" HeightRequest="44" CornerRadius="22"
-                                BorderColor="#6366f1" BorderWidth="1" FontSize="22"/>
-                    </HorizontalStackLayout>
+                <VerticalStackLayout Spacing="10">
+                    <Label Text="Target pradhakshinas" FontSize="13"
+                           TextColor="#94a3b8" HorizontalOptions="Center"/>
+
+                    <!-- Preset picker: traditional counts -->
+                    <Picker Title="Choose preset"
+                            SelectedIndex="{Binding SelectedPresetIndex}"
+                            TextColor="White"
+                            TitleColor="#64748b"
+                            BackgroundColor="#0f172a">
+                        <Picker.Items>
+                            <x:String>1</x:String>
+                            <x:String>3</x:String>
+                            <x:String>5</x:String>
+                            <x:String>7</x:String>
+                            <x:String>9</x:String>
+                            <x:String>11</x:String>
+                            <x:String>12</x:String>
+                            <x:String>21</x:String>
+                            <x:String>27</x:String>
+                            <x:String>54</x:String>
+                            <x:String>63</x:String>
+                            <x:String>108</x:String>
+                        </Picker.Items>
+                    </Picker>
+
+                    <!-- Custom target entry -->
+                    <Grid ColumnDefinitions="*,Auto" ColumnSpacing="10">
+                        <Entry x:Name="CustomTargetEntry"
+                               Placeholder="Custom number"
+                               PlaceholderColor="#64748b"
+                               TextColor="White"
+                               BackgroundColor="#0f172a"
+                               Keyboard="Numeric"
+                               ReturnType="Done"
+                               Grid.Column="0"
+                               ReturnCommand="{Binding SetCustomTargetCommand}"
+                               ReturnCommandParameter="{Binding Text, Source={x:Reference CustomTargetEntry}}"/>
+                        <Button Text="Set"
+                                Command="{Binding SetCustomTargetCommand}"
+                                CommandParameter="{Binding Text, Source={x:Reference CustomTargetEntry}}"
+                                BackgroundColor="#6366f1" TextColor="White"
+                                WidthRequest="60" HeightRequest="44" CornerRadius="10"
+                                Grid.Column="1"/>
+                    </Grid>
+
+                    <Label Text="{Binding TargetParikrama, StringFormat='Current target: {0}'}"
+                           FontSize="13" TextColor="#6366f1" HorizontalOptions="Center"/>
                 </VerticalStackLayout>
             </Frame>
 
@@ -74,13 +106,15 @@
                 </VerticalStackLayout>
             </Frame>
 
-            <!-- Movement & direction -->
+            <!-- Movement & compass -->
             <Grid ColumnDefinitions="*,*" ColumnSpacing="12">
-                <Frame BackgroundColor="#1e293b" BorderColor="#f59e0b" CornerRadius="12" Padding="12" Grid.Column="0">
+                <Frame BackgroundColor="#1e293b" BorderColor="#f59e0b" CornerRadius="12" Padding="12"
+                       Grid.Column="0">
                     <Label Text="{Binding MovementStatus}" FontSize="14"
                            TextColor="#f59e0b" HorizontalOptions="Center" FontAttributes="Bold"/>
                 </Frame>
-                <Frame BackgroundColor="#1e293b" BorderColor="#3b82f6" CornerRadius="12" Padding="12" Grid.Column="1">
+                <Frame BackgroundColor="#1e293b" BorderColor="#3b82f6" CornerRadius="12" Padding="12"
+                       Grid.Column="1">
                     <VerticalStackLayout>
                         <Label Text="{Binding Heading}" FontSize="22" FontAttributes="Bold"
                                TextColor="#3b82f6" HorizontalOptions="Center"/>
@@ -108,12 +142,13 @@
                         <Label Text="{Binding CircleProgress, StringFormat='{0:F0}%'}"
                                FontSize="12" TextColor="#64748b" Grid.Column="0"/>
                         <Label Text="{Binding StepsInCircle, StringFormat='Steps: {0}'}"
-                               FontSize="12" TextColor="#64748b" HorizontalOptions="End" Grid.Column="1"/>
+                               FontSize="12" TextColor="#64748b" HorizontalOptions="End"
+                               Grid.Column="1"/>
                     </Grid>
                 </VerticalStackLayout>
             </Frame>
 
-            <!-- Steps total -->
+            <!-- Total steps -->
             <Frame BackgroundColor="#1e293b" BorderColor="#334155" CornerRadius="12" Padding="12">
                 <HorizontalStackLayout HorizontalOptions="Center" Spacing="12">
                     <Label Text="Total steps:" FontSize="14" TextColor="#64748b" VerticalOptions="Center"/>
@@ -141,8 +176,7 @@
                 <Button Text="↕" Command="{Binding ToggleCountModeCommand}"
                         BackgroundColor="#334155" TextColor="#94a3b8"
                         WidthRequest="50" HeightRequest="50" CornerRadius="12"
-                        FontSize="20" Grid.Column="1"
-                        ToolTipProperties.Text="Toggle ascending/descending"/>
+                        FontSize="20" Grid.Column="1"/>
 
                 <Button Text="Reset" Command="{Binding ResetCommand}"
                         BackgroundColor="#ef4444" TextColor="White"
