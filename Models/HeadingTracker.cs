@@ -14,11 +14,14 @@ namespace ParikramaCounter.Models
         // Increased from 5s → 15s: walkers pause at prayer points, obstacles, crowds
         private const int MAX_TIME_GAP_MS = 15000;
 
-        // A full rotation window: accept 340°–400° as a completed circle.
-        // Too strict (exactly 360°) rejects walkers who drift slightly short.
-        // Too loose (> 400°) would count someone who over-rotated or doubled back.
-        private const double FULL_ROTATION_MIN = 340.0;
-        private const double FULL_ROTATION_MAX = 400.0;
+        // Full rotation threshold: >= 340° (no upper bound).
+        // cumulativeHeadingChange is an unbounded accumulator of heading deltas —
+        // it does NOT wrap at 360°. The 0°/360° compass wrap is already corrected
+        // per-tick in Update(), so the accumulator climbs continuously: 180, 270, 362...
+        // There is no ceiling to enforce — ResetCircle() resets the accumulator
+        // immediately after detection. The -20° tolerance covers real walkers who
+        // drift slightly short due to magnetometer noise.
+        private const double FULL_ROTATION_THRESHOLD = 340.0;
 
         public double CumulativeChange => Math.Abs(cumulativeHeadingChange);
         public bool IsClockwise => direction > 0;
@@ -86,14 +89,13 @@ namespace ParikramaCounter.Models
         }
 
         /// <summary>
-        /// Returns true when the cumulative angular change falls within the valid
-        /// full-rotation window (340°–400°). Using a window rather than a point
-        /// threshold accommodates real-world magnetometer drift and walking variation.
+        /// Returns true once cumulative heading change reaches FULL_ROTATION_THRESHOLD (340°).
+        /// No upper bound — the accumulator is unbounded and ResetCircle() fires immediately
+        /// after a valid detection, so overcounting is not possible.
         /// </summary>
         public bool HasCompletedFullRotation()
         {
-            double abs = Math.Abs(cumulativeHeadingChange);
-            return abs >= FULL_ROTATION_MIN && abs <= FULL_ROTATION_MAX;
+            return Math.Abs(cumulativeHeadingChange) >= FULL_ROTATION_THRESHOLD;
         }
 
         /// <summary>
