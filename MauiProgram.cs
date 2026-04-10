@@ -29,10 +29,21 @@ namespace ParikramaCounter
 #endif
 
             // Platform sensor service
+            // On simulator/emulator (DeviceType.Virtual), real sensors aren't available —
+            // MockSensorService fires synthetic walking data so the full tracking
+            // pipeline can be exercised without a physical device.
 #if ANDROID
-            builder.Services.AddSingleton<ISensorService, AndroidSensorService>();
+            if (Microsoft.Maui.Devices.DeviceInfo.DeviceType == Microsoft.Maui.Devices.DeviceType.Virtual)
+                builder.Services.AddSingleton<ISensorService, MockSensorService>();
+            else
+                builder.Services.AddSingleton<ISensorService, AndroidSensorService>();
 #elif IOS
-            builder.Services.AddSingleton<ISensorService, iOSSensorService>();
+            if (Microsoft.Maui.Devices.DeviceInfo.DeviceType == Microsoft.Maui.Devices.DeviceType.Virtual)
+                builder.Services.AddSingleton<ISensorService, MockSensorService>();
+            else
+                builder.Services.AddSingleton<ISensorService, iOSSensorService>();
+#else
+            builder.Services.AddSingleton<ISensorService, MockSensorService>();
 #endif
 
             // Issue #4: standard two-type registration — no unnecessary lambda factory.
