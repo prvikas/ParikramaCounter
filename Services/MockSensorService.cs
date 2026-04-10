@@ -26,12 +26,11 @@ namespace ParikramaCounter.Services
         private bool   isRunning   = false;
         private bool   disposed    = false;
 
-        public int  HardwareStepCount { get; private set; }
-        public void UpdateStepCount(int count) { HardwareStepCount = count; }
+        public int HardwareStepCount { get; private set; }
 
         public event Action<double[], double[], double[]>? SensorDataReceived;
 
-        public void Start(bool highRate = false)
+        public void Start()
         {
             if (isRunning) return;
             isRunning      = true;

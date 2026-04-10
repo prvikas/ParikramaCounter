@@ -7,8 +7,8 @@ namespace ParikramaCounter.Platforms.iOS
 {
     public class iOSSensorService : ISensorService, IDisposable
     {
-        private readonly CMMotionManager motionManager;
-        private readonly CMPedometer     pedometer;
+        private readonly CMMotionManager  motionManager;
+        private readonly CMPedometer      pedometer;
         private readonly NSOperationQueue operationQueue;
         private bool isRunning;
         private bool disposed;
@@ -22,7 +22,6 @@ namespace ParikramaCounter.Platforms.iOS
         private bool hasMag   = false;
 
         public int HardwareStepCount { get; private set; }
-        public void UpdateStepCount(int count) { }   // no-op: CMPedometer owns the value
 
         public event Action<double[], double[], double[]> SensorDataReceived;
 
@@ -33,12 +32,11 @@ namespace ParikramaCounter.Platforms.iOS
             operationQueue = new NSOperationQueue { MaxConcurrentOperationCount = 1 };
         }
 
-        // Issue #5: highRate=false → 0.2s interval (idle); true → 0.02s (tracking)
-        public void Start(bool highRate = false)
+        // Fix #2: Start() no args — idle rate; caller uses SetRate() to switch
+        public void Start()
         {
             if (isRunning) return;
-            currentHighRate = highRate;
-            StartSensors(highRate);
+            StartSensors(false);
             isRunning = true;
         }
 
@@ -46,8 +44,6 @@ namespace ParikramaCounter.Platforms.iOS
         {
             if (!isRunning || currentHighRate == highRate) return;
             currentHighRate = highRate;
-            // CMMotionManager and CMPedometer both require stop+restart to change interval.
-            // Calling StartPedometerUpdates on an already-running pedometer throws NSInvalidArgumentException.
             motionManager.StopAccelerometerUpdates();
             motionManager.StopGyroUpdates();
             motionManager.StopMagnetometerUpdates();
@@ -59,6 +55,7 @@ namespace ParikramaCounter.Platforms.iOS
         private void StartSensors(bool highRate)
         {
             double interval = highRate ? 0.02 : 0.2;
+            currentHighRate = highRate;
 
             if (motionManager.AccelerometerAvailable)
             {
@@ -76,7 +73,6 @@ namespace ParikramaCounter.Platforms.iOS
                     TryDispatch();
                 });
             }
-
             if (motionManager.GyroAvailable)
             {
                 motionManager.GyroUpdateInterval = interval;
@@ -91,7 +87,6 @@ namespace ParikramaCounter.Platforms.iOS
                     }
                 });
             }
-
             if (motionManager.MagnetometerAvailable)
             {
                 motionManager.MagnetometerUpdateInterval = interval;
@@ -108,7 +103,6 @@ namespace ParikramaCounter.Platforms.iOS
                     TryDispatch();
                 });
             }
-
             if (CMPedometer.IsStepCountingAvailable)
                 pedometer.StartPedometerUpdates(NSDate.Now, (data, _) =>
                 {

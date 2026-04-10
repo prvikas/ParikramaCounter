@@ -16,13 +16,14 @@ namespace ParikramaCounter.Platforms.Android
         private float[] accelValues = new float[3];
         private float[] gyroValues  = new float[3];
         private float[] magValues   = new float[3];
-        private bool hasAccel  = false;
-        private bool hasMag    = false;
-        private bool isRunning = false;
+        private bool hasAccel      = false;
+        private bool hasMag        = false;
+        private bool isRunning     = false;
         private bool currentHighRate = false;
 
+        // Fix #2: HardwareStepCount is read-only from outside; Android populates
+        // it via its own step sensor if available, otherwise remains 0 (StepDetector used).
         public int HardwareStepCount { get; private set; }
-        public void UpdateStepCount(int count) => HardwareStepCount = count;
 
         public event Action<double[], double[], double[]> SensorDataReceived;
 
@@ -34,13 +35,12 @@ namespace ParikramaCounter.Platforms.Android
             magnetometer  = sensorManager.GetDefaultSensor(SensorType.MagneticField);
         }
 
-        public void Start(bool highRate = false)
+        // Fix #2: Start() takes no arguments — rate is set separately via SetRate()
+        public void Start()
         {
             if (isRunning) return;
-            isRunning       = true;
-            currentHighRate = highRate;
-            var delay = highRate ? SensorDelay.Game : SensorDelay.Ui;
-            Register(delay);
+            isRunning = true;
+            Register(SensorDelay.Ui);   // idle rate until SetRate(true) is called
         }
 
         public void SetRate(bool highRate)

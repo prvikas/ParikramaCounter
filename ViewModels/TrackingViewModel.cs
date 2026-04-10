@@ -1,33 +1,33 @@
 using System;
 using System.Collections.Generic;
 using System.ComponentModel;
+using System.Diagnostics;
 using System.Runtime.CompilerServices;
 using System.Windows.Input;
 using Microsoft.Maui.Controls;
+using ParikramaCounter.Models;
 using ParikramaCounter.Services;
 
 namespace ParikramaCounter.ViewModels
 {
-    // Issue #1: no duplicate count/target fields — ViewModel reads from
-    //   IPradhakshinaSessionService (single source of truth).
-    // Issue #6: no longer depends on SettingsViewModel — observes IAppPreferences
-    //   directly for IsDescendingMode changes via the prefs-changed event pattern.
-    // Issue #10: constructor reduced from 5 params to 4 — SettingsViewModel removed.
+    // Fix #5: TrackingViewModel is now a pure observer.
+    // It no longer calls fusionEngine.ProcessSensorData or drives the sensor loop.
+    // The SensorPipeline owns that loop; TrackingViewModel subscribes to its output.
     public class TrackingViewModel : INotifyPropertyChanged, IDisposable
     {
         private bool disposed;
 
-        private readonly ISensorService              sensorService;
-        private readonly ISensorFusionEngine         fusionEngine;
+        private readonly ISensorPipeline             pipeline;
         private readonly IPradhakshinaSessionService session;
-        private readonly IAppPreferences             prefs;
+        private readonly IUserPreferences            userPrefs;
+        private readonly ISensorFusionEngine         fusionEngine;
 
         private const int TotalSides = 4;
 
         public static readonly List<int> PresetTargets = new List<int>
             { 1, 3, 5, 7, 9, 11, 12, 21, 27, 54, 63, 108 };
 
-        // ── Display-only backing fields (NOT count/target — those live in session) ─
+        // ── Display-only backing fields ───────────────────────────────────────────
         private string heading         = "0°";
         private string direction       = "N";
         private int    steps;
@@ -45,32 +45,27 @@ namespace ParikramaCounter.ViewModels
 
         // ── Properties ────────────────────────────────────────────────────────────
 
-        // Issue #1: count and target are read-through to the session service —
-        // no local backing field, no possibility of divergence.
-        public int  ParikramaCount   => session.Count;
-        public int  TargetParikrama  => session.Target;
-        public int  RemainingParikramas => Math.Max(0, session.Target - session.Count);
-        public string DisplayCount   => prefs.IsDescendingMode
+        // Count and target are read-through to session — single source of truth
+        public int    ParikramaCount     => session.Count;
+        public int    TargetParikrama    => session.Target;
+        public int    RemainingParikramas => Math.Max(0, session.Target - session.Count);
+        public string DisplayCount       => userPrefs.IsDescendingMode
             ? $"{Math.Max(0, session.Target - session.Count)}"
             : $"{session.Count}";
 
-        public bool IsTracking
-        {
-            get => isTracking;
-            private set { isTracking = value; StartStopText = value ? "Stop" : "Start"; OnPropertyChanged(); }
-        }
-        public string StartStopText     { get => startStopText;    private set { startStopText = value;    OnPropertyChanged(); } }
-        public string Heading           { get => heading;           private set { heading = value;           OnPropertyChanged(); } }
-        public string Direction         { get => direction;         private set { direction = value;         OnPropertyChanged(); } }
-        public int    Steps             { get => steps;             private set { steps = value;             OnPropertyChanged(); } }
-        public double ProgressPercentage{ get => progressPercentage;private set { progressPercentage = value;OnPropertyChanged(); } }
-        public bool   TargetReached     { get => targetReached;     private set { targetReached = value;     OnPropertyChanged(); } }
-        public string MovementStatus    { get => movementStatus;    private set { movementStatus = value;    OnPropertyChanged(); } }
-        public string SidesInfo         { get => sidesInfo;         private set { sidesInfo = value;         OnPropertyChanged(); } }
-        public double CircleProgress    { get => circleProgress;    private set { circleProgress = value;    OnPropertyChanged(); } }
-        public string CircleDirection   { get => circleDirection;   private set { circleDirection = value;   OnPropertyChanged(); } }
-        public int    StepsInCircle     { get => stepsInCircle;     private set { stepsInCircle = value;     OnPropertyChanged(); } }
-        public string CountModeLabel    { get => countModeLabel;    private set { countModeLabel = value;    OnPropertyChanged(); } }
+        public bool   IsTracking        { get => isTracking;         private set { isTracking = value;         StartStopText = value ? "Stop" : "Start"; OnPropertyChanged(); } }
+        public string StartStopText     { get => startStopText;      private set { startStopText = value;      OnPropertyChanged(); } }
+        public string Heading           { get => heading;             private set { heading = value;             OnPropertyChanged(); } }
+        public string Direction         { get => direction;           private set { direction = value;           OnPropertyChanged(); } }
+        public int    Steps             { get => steps;               private set { steps = value;               OnPropertyChanged(); } }
+        public double ProgressPercentage{ get => progressPercentage;  private set { progressPercentage = value;  OnPropertyChanged(); } }
+        public bool   TargetReached     { get => targetReached;       private set { targetReached = value;       OnPropertyChanged(); } }
+        public string MovementStatus    { get => movementStatus;      private set { movementStatus = value;      OnPropertyChanged(); } }
+        public string SidesInfo         { get => sidesInfo;           private set { sidesInfo = value;           OnPropertyChanged(); } }
+        public double CircleProgress    { get => circleProgress;      private set { circleProgress = value;      OnPropertyChanged(); } }
+        public string CircleDirection   { get => circleDirection;     private set { circleDirection = value;     OnPropertyChanged(); } }
+        public int    StepsInCircle     { get => stepsInCircle;       private set { stepsInCircle = value;       OnPropertyChanged(); } }
+        public string CountModeLabel    { get => countModeLabel;      private set { countModeLabel = value;      OnPropertyChanged(); } }
 
         public int SelectedPresetIndex
         {
@@ -95,73 +90,65 @@ namespace ParikramaCounter.ViewModels
         public ICommand ToggleCountModeCommand { get; }
         public ICommand SetCustomTargetCommand { get; }
 
-        // ── Constructor ───────────────────────────────────────────────────────────
-
         public TrackingViewModel(
-            ISensorService              sensorService,
-            ISensorFusionEngine         fusionEngine,
-            IPradhakshinaSessionService session,
-            IAppPreferences             prefs)
+            ISensorPipeline              pipeline,
+            IPradhakshinaSessionService  session,
+            IUserPreferences             userPrefs,
+            ISensorFusionEngine          fusionEngine)
         {
-            this.sensorService = sensorService ?? throw new ArgumentNullException(nameof(sensorService));
-            this.fusionEngine  = fusionEngine  ?? throw new ArgumentNullException(nameof(fusionEngine));
-            this.session       = session       ?? throw new ArgumentNullException(nameof(session));
-            this.prefs         = prefs         ?? throw new ArgumentNullException(nameof(prefs));
+            this.pipeline     = pipeline     ?? throw new ArgumentNullException(nameof(pipeline));
+            this.session      = session      ?? throw new ArgumentNullException(nameof(session));
+            this.userPrefs    = userPrefs    ?? throw new ArgumentNullException(nameof(userPrefs));
+            this.fusionEngine = fusionEngine ?? throw new ArgumentNullException(nameof(fusionEngine));
 
-            session.CountChanged      += OnCountChanged;
-            session.TargetReached     += OnTargetReachedEvent;
-            // ThirdSideCompleted and ApproachingStart are handled inside session service
-            // (vibration fires there). No UI action needed in the ViewModel.
-
-            sensorService.SensorDataReceived += OnSensorDataReceived;
+            // Subscribe to processed sensor data — not raw arrays
+            pipeline.SensorProcessed     += OnSensorProcessed;
+            session.CountChanged         += OnCountChanged;
+            session.TargetReached        += OnTargetReachedEvent;
 
             StartStopCommand       = new Command(StartStop);
             ResetCommand           = new Command(async () => await ResetAsync());
             ManualIncrementCommand = new Command(async () => await session.ManualIncrementAsync());
             ManualDecrementCommand = new Command(() => session.ManualDecrement());
-            // Issue #6: toggle mode via prefs directly, then notify display
             ToggleCountModeCommand = new Command(ToggleCountMode);
             SetCustomTargetCommand = new Command<string>(SetCustomTarget);
 
             int idx             = PresetTargets.IndexOf(session.Target);
             selectedPresetIndex = idx >= 0 ? idx : 0;
-            CountModeLabel      = prefs.IsDescendingMode ? "Descending" : "Ascending";
+            CountModeLabel      = userPrefs.IsDescendingMode ? "Descending" : "Ascending";
             UpdateProgress();
         }
 
-        // ── Sensor data handler ───────────────────────────────────────────────────
+        // ── Pipeline observer ─────────────────────────────────────────────────────
 
-        private void OnSensorDataReceived(double[] accel, double[] gyro, double[] mag)
+        private void OnSensorProcessed(SensorData data)
         {
-            var data = fusionEngine.ProcessSensorData(accel, gyro, mag);
-
             MainThread.BeginInvokeOnMainThread(() =>
             {
-                Heading        = $"{data.Heading:F1}°";
-                Direction      = data.Direction;
-                Steps          = data.Steps;
-                MovementStatus = fusionEngine.IsMoving ? "🚶 Walking" : "🛑 Stationary";
-
-                if (isTracking)
+                try
                 {
-                    CircleProgress  = session.CurrentProgress;
-                    CircleDirection = session.GetDirection();
-                    StepsInCircle   = session.CurrentStepsInCircle;
-                    SidesInfo       = $"{session.SidesCompleted}/{TotalSides} sides";
-                    session.ProcessSensorData(data.Heading, data.Steps, fusionEngine.IsMoving, data.Timestamp);
+                    Heading        = $"{data.Heading:F1}°";
+                    Direction      = data.Direction;
+                    Steps          = data.Steps;
+                    MovementStatus = fusionEngine.IsMoving ? "🚶 Walking" : "🛑 Stationary";
+
+                    if (isTracking)
+                    {
+                        CircleProgress  = session.CurrentProgress;
+                        CircleDirection = session.GetDirection();
+                        StepsInCircle   = session.CurrentStepsInCircle;
+                        SidesInfo       = $"{session.SidesCompleted}/{TotalSides} sides";
+                    }
+                }
+                catch (Exception ex)
+                {
+                    Debug.WriteLine($"[TrackingViewModel] Display update error: {ex.Message}");
                 }
             });
         }
 
-        // ── Session event handlers ────────────────────────────────────────────────
-
         private void OnCountChanged(int _)
         {
-            // CountChanged fires from session.ProcessSensorData which is already called
-            // inside BeginInvokeOnMainThread in OnSensorDataReceived — we are on the
-            // main thread here. Call OnPropertyChanged directly to avoid a one-frame lag.
-            // (ManualIncrementAsync fires CountChanged from the command handler, which
-            // MAUI Command infrastructure also dispatches on the main thread.)
             OnPropertyChanged(nameof(ParikramaCount));
             OnPropertyChanged(nameof(RemainingParikramas));
             OnPropertyChanged(nameof(DisplayCount));
@@ -177,13 +164,23 @@ namespace ParikramaCounter.ViewModels
 
         private void StartStop()
         {
-            if (IsTracking) { IsTracking = false; _ = session.StopTrackingAsync(steps); }
-            else            { session.StartTracking(); IsTracking = true; }
+            if (IsTracking)
+            {
+                IsTracking = false;
+                pipeline.Stop();
+                _ = session.StopTrackingAsync(steps);
+            }
+            else
+            {
+                session.StartTracking();
+                pipeline.Start();
+                IsTracking = true;
+            }
         }
 
         private async System.Threading.Tasks.Task ResetAsync()
         {
-            IsTracking      = false;
+            if (IsTracking) { pipeline.Stop(); IsTracking = false; }
             TargetReached   = false;
             CircleProgress  = 0;
             StepsInCircle   = 0;
@@ -191,9 +188,6 @@ namespace ParikramaCounter.ViewModels
             SidesInfo       = $"0/{TotalSides} sides";
             MovementStatus  = "Stationary";
             fusionEngine.Reset();
-            // session.ResetAsync() fires CountChanged(0) which calls OnCountChanged
-            // on the main thread — that notifies ParikramaCount, DisplayCount,
-            // RemainingParikramas, and UpdateProgress. No need to repeat them here.
             await session.ResetAsync();
         }
 
@@ -201,7 +195,6 @@ namespace ParikramaCounter.ViewModels
         {
             if (!int.TryParse(text, out int value) || value < 1) return;
             session.SetTarget(value);
-            // Clear completion banner if new target is beyond current count
             if (value > session.Count) TargetReached = false;
             RefreshTargetDisplay();
             int idx = PresetTargets.IndexOf(value);
@@ -214,17 +207,14 @@ namespace ParikramaCounter.ViewModels
 
         private void ToggleCountMode()
         {
-            // Issue #6: write directly to prefs — no SettingsViewModel needed
-            prefs.IsDescendingMode = !prefs.IsDescendingMode;
-            CountModeLabel = prefs.IsDescendingMode ? "Descending" : "Ascending";
+            userPrefs.IsDescendingMode = !userPrefs.IsDescendingMode;
+            CountModeLabel = userPrefs.IsDescendingMode ? "Descending" : "Ascending";
             OnPropertyChanged(nameof(DisplayCount));
         }
 
-        // Called from TrackingPage.OnAppearing so that a mode change made on the
-        // Settings page is reflected when the user navigates back to Tracking.
         public void RefreshModeDisplay()
         {
-            CountModeLabel = prefs.IsDescendingMode ? "Descending" : "Ascending";
+            CountModeLabel = userPrefs.IsDescendingMode ? "Descending" : "Ascending";
             OnPropertyChanged(nameof(DisplayCount));
         }
 
@@ -243,15 +233,13 @@ namespace ParikramaCounter.ViewModels
                 : 0;
         }
 
-        // ── IDisposable ───────────────────────────────────────────────────────────
-
         public void Dispose()
         {
             if (disposed) return;
             disposed = true;
-            sensorService.SensorDataReceived -= OnSensorDataReceived;
-            session.CountChanged             -= OnCountChanged;
-            session.TargetReached            -= OnTargetReachedEvent;
+            pipeline.SensorProcessed -= OnSensorProcessed;
+            session.CountChanged     -= OnCountChanged;
+            session.TargetReached    -= OnTargetReachedEvent;
         }
 
         public event PropertyChangedEventHandler PropertyChanged;
@@ -259,5 +247,3 @@ namespace ParikramaCounter.ViewModels
             => PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(name));
     }
 }
-
-// Note: this 

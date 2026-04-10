@@ -1,29 +1,37 @@
 namespace ParikramaCounter.Services
 {
-    // Fix #6 (scattered Preferences): all preference keys in one place.
-    // Typed properties eliminate string-key typos and make all persisted state
-    // discoverable. Changing storage mechanism (e.g. to SecureStorage or SQLite)
-    // only requires changing the implementation, not every call site.
-    public interface IAppPreferences
-    {
-        // Session state
-        int  TargetParikrama     { get; set; }
-        int  ParikramaCount      { get; set; }
+    // Fix #3: split into three focused interfaces with different lifetimes
+    // and different consumers. IAppPreferences is a composed facade for
+    // DI registration — implementations implement all three.
 
-        // Counting behaviour
+    // Runtime session state — changes on every count update.
+    public interface ISessionState
+    {
+        int    TargetParikrama   { get; set; }
+        int    ParikramaCount    { get; set; }
+        string? ActiveTempleId   { get; set; }
+    }
+
+    // User-facing settings — changes only when user visits Settings page.
+    public interface IUserPreferences
+    {
         bool IsDescendingMode    { get; set; }
         bool AutoCountingEnabled { get; set; }
-
-        // Vibration
         bool EnableVibrations            { get; set; }
         int  ThirdSideVibrationMs        { get; set; }
         int  ApproachingStartVibrationMs { get; set; }
         int  CompletionVibrationMs       { get; set; }
         int  TargetVibrationMs           { get; set; }
         int  TargetVibrationCount        { get; set; }
+    }
 
-        // Step detection
+    // Algorithm tuning — changes only during expert calibration.
+    public interface ISensorConfiguration
+    {
         int StepThreshold   { get; set; }
         int MinStepInterval { get; set; }
     }
+
+    // Composed facade — single DI registration, implements all three.
+    public interface IAppPreferences : ISessionState, IUserPreferences, ISensorConfiguration { }
 }

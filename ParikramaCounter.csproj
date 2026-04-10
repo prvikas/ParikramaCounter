@@ -21,10 +21,10 @@
 		<Nullable>enable</Nullable>
 
 		<!-- Display name -->
-		<ApplicationTitle>ParikramaCounter</ApplicationTitle>
+		<ApplicationTitle>Pradhakshina Counter</ApplicationTitle>
 
 		<!-- App Identifier -->
-		<ApplicationId>com.companyname.parikramacounter</ApplicationId>
+		<ApplicationId>com.pradhakshina.counter</ApplicationId>
 
 		<!-- Versions -->
 		<ApplicationDisplayVersion>1.0</ApplicationDisplayVersion>

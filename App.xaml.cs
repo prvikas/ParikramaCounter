@@ -9,6 +9,7 @@ namespace ParikramaCounter
     public partial class App : Application
     {
         private ISensorLifecycleService? lifecycleService;
+        private IVibrationService?       vibrationService;
         private TrackingViewModel?       trackingViewModel;
         private DiagnosticsViewModel?    diagnosticsViewModel;
 
@@ -21,14 +22,18 @@ namespace ParikramaCounter
             trackingViewModel    = sp.GetRequiredService<TrackingViewModel>();
             diagnosticsViewModel = sp.GetRequiredService<DiagnosticsViewModel>();
 
-            // Fix #4: sensor hardware starts with the app — not gated behind Start button.
-            // TrackingViewModel controls whether the tracker processes data, not the hardware.
+            // Resolve VibrationService so its constructor runs and event subscriptions
+            // to IPradhakshinaSessionService are established before tracking starts.
+            vibrationService = sp.GetRequiredService<IVibrationService>();
+
+            // Start sensors at idle rate — SensorPipeline starts when user presses Start
             lifecycleService.Activate();
 
             var window = new Window(new AppShell());
             window.Destroying += (_, _) =>
             {
                 lifecycleService?.Deactivate();
+                (vibrationService as System.IDisposable)?.Dispose();
                 trackingViewModel?.Dispose();
                 diagnosticsViewModel?.Dispose();
             };

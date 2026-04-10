@@ -5,15 +5,35 @@ using Microsoft.Maui.Devices;
 
 namespace ParikramaCounter.Services
 {
-    // Issue #9: bare catch{} replaced with typed catches that log in DEBUG.
-    // FeatureNotSupportedException (device has no vibrator) is silently ignored —
-    // the app can still function. Any other exception is logged so it's visible
-    // during development and doesn't hide programming errors.
-    public class VibrationService : IVibrationService
+    // Fix #4: VibrationService now subscribes to IPradhakshinaSessionService events
+    // rather than being called directly. This decouples the session service from
+    // the vibration implementation entirely.
+    public class VibrationService : IVibrationService, IDisposable
     {
-        private readonly IAppPreferences prefs;
+        private readonly IUserPreferences          prefs;
+        private readonly IPradhakshinaSessionService session;
+        private bool disposed;
 
-        public VibrationService(IAppPreferences prefs) => this.prefs = prefs;
+        public VibrationService(IUserPreferences prefs, IPradhakshinaSessionService session)
+        {
+            this.prefs   = prefs   ?? throw new ArgumentNullException(nameof(prefs));
+            this.session = session ?? throw new ArgumentNullException(nameof(session));
+
+            // Subscribe to domain events — session service fires events, we handle side effects
+            session.ThirdSideCompleted += VibrateThirdSide;
+            session.ApproachingStart   += VibrateApproachingStart;
+            session.CountChanged       += OnCountChanged;
+            session.TargetReached      += OnTargetReached;
+        }
+
+        private void OnCountChanged(int count)
+        {
+            // Vibrate on each completion except the first tap (count > 1)
+            if (count > 1 && !session.IsTargetReached)
+                VibrateCompletion();
+        }
+
+        private void OnTargetReached() => _ = VibrateTargetReachedAsync();
 
         public void VibrateThirdSide()        => Vibrate(prefs.ThirdSideVibrationMs);
         public void VibrateApproachingStart() => Vibrate(prefs.ApproachingStartVibrationMs);
@@ -22,8 +42,6 @@ namespace ParikramaCounter.Services
         public async Task VibrateTargetReachedAsync()
         {
             if (!prefs.EnableVibrations) return;
-            // Capture values before the loop — prefs.TargetVibrationMs goes to
-            // Preferences storage on every read; reading inside the loop is wasteful.
             int count = prefs.TargetVibrationCount;
             int ms    = prefs.TargetVibrationMs;
             for (int i = 0; i < count; i++)
@@ -36,19 +54,19 @@ namespace ParikramaCounter.Services
         private void Vibrate(int ms)
         {
             if (!prefs.EnableVibrations) return;
-            try
-            {
-                Vibration.Default.Vibrate(TimeSpan.FromMilliseconds(ms));
-            }
-            catch (FeatureNotSupportedException)
-            {
-                // Device has no vibrator — silent, expected on some hardware
-            }
-            catch (Exception ex)
-            {
-                // Unexpected — log in DEBUG so it's visible during development
-                Debug.WriteLine($"[VibrationService] Unexpected error: {ex.Message}");
-            }
+            try { Vibration.Default.Vibrate(TimeSpan.FromMilliseconds(ms)); }
+            catch (FeatureNotSupportedException) { }
+            catch (Exception ex) { Debug.WriteLine($"[VibrationService] {ex.Message}"); }
+        }
+
+        public void Dispose()
+        {
+            if (disposed) return;
+            disposed = true;
+            session.ThirdSideCompleted -= VibrateThirdSide;
+            session.ApproachingStart   -= VibrateApproachingStart;
+            session.CountChanged       -= OnCountChanged;
+            session.TargetReached      -= OnTargetReached;
         }
     }
 }

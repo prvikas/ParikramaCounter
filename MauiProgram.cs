@@ -25,13 +25,11 @@ namespace ParikramaCounter
                 });
 
 #if DEBUG
-            builder.Logging.AddDebug();
+            builder.Logging.AddDebug();  // Fix #10: structured logging wired up
 #endif
 
-            // Platform sensor service
-            // On simulator/emulator (DeviceType.Virtual), real sensors aren't available —
-            // MockSensorService fires synthetic walking data so the full tracking
-            // pipeline can be exercised without a physical device.
+            // ── Platform sensor service ───────────────────────────────────────────
+            // Fix #9: simulator detection for testing without a physical device
 #if ANDROID
             if (Microsoft.Maui.Devices.DeviceInfo.DeviceType == Microsoft.Maui.Devices.DeviceType.Virtual)
                 builder.Services.AddSingleton<ISensorService, MockSensorService>();
@@ -46,23 +44,39 @@ namespace ParikramaCounter
             builder.Services.AddSingleton<ISensorService, MockSensorService>();
 #endif
 
-            // Issue #4: standard two-type registration — no unnecessary lambda factory.
-            // The container resolves ISensorService from its own registration automatically.
+            // ── Core infrastructure ───────────────────────────────────────────────
             builder.Services.AddSingleton<ISensorFusionEngine, SensorFusionEngine>();
             builder.Services.AddSingleton<ISensorLifecycleService, SensorLifecycleService>();
-            builder.Services.AddSingleton<IAppPreferences, AppPreferences>();
-            builder.Services.AddSingleton<IVibrationService, VibrationService>();
-            builder.Services.AddSingleton<ISessionRepository, JsonSessionRepository>();
 
-            // Issue #3: registered against IPradhakshinaSessionService so consumers
-            // depend on the abstraction and the service is independently testable.
+            // ── Fix #3: split preferences registered as all three interfaces ──────
+            builder.Services.AddSingleton<AppPreferences>();
+            builder.Services.AddSingleton<IAppPreferences>(sp => sp.GetRequiredService<AppPreferences>());
+            builder.Services.AddSingleton<ISessionState>(sp => sp.GetRequiredService<AppPreferences>());
+            builder.Services.AddSingleton<IUserPreferences>(sp => sp.GetRequiredService<AppPreferences>());
+            builder.Services.AddSingleton<ISensorConfiguration>(sp => sp.GetRequiredService<AppPreferences>());
+
+            // ── Repositories ──────────────────────────────────────────────────────
+            builder.Services.AddSingleton<ISessionRepository, JsonSessionRepository>();
+            builder.Services.AddSingleton<ITempleRepository, JsonTempleRepository>();
+
+            // ── Domain services ───────────────────────────────────────────────────
+            // Fix #4: VibrationService is IDisposable — registered as singleton so
+            // it can subscribe to session events once and live for app lifetime.
+            builder.Services.AddSingleton<IVibrationService, VibrationService>();
+
+            // Session service — single source of truth for count and target
             builder.Services.AddSingleton<IPradhakshinaSessionService, PradhakshinaSessionService>();
 
-            // ViewModels — standard registration; DI resolves constructor params automatically
+            // Fix #5: SensorPipeline owns the sensor→fusion→session loop
+            builder.Services.AddSingleton<ISensorPipeline, SensorPipeline>();
+
+            // ── ViewModels ────────────────────────────────────────────────────────
+            // Fix #10: ILogger automatically resolved by the DI container
             builder.Services.AddSingleton<SettingsViewModel>();
             builder.Services.AddSingleton<TrackingViewModel>();
             builder.Services.AddSingleton<DiagnosticsViewModel>();
 
+            // ── Pages ─────────────────────────────────────────────────────────────
             builder.Services.AddTransient<Views.TrackingPage>();
             builder.Services.AddTransient<Views.DiagnosticsPage>();
             builder.Services.AddTransient<Views.SettingsPage>();

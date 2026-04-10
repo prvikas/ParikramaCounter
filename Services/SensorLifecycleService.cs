@@ -2,10 +2,6 @@ using System;
 
 namespace ParikramaCounter.Services
 {
-    // Issue #5: sensors start at low rate (idle) on app launch.
-    // Switches to high rate (game) when tracking starts, back to low when stopped.
-    // This avoids draining battery while the devotee is navigating menus or
-    // before they begin their pradhakshina walk.
     public class SensorLifecycleService : ISensorLifecycleService
     {
         private readonly ISensorService sensorService;
@@ -14,14 +10,13 @@ namespace ParikramaCounter.Services
         public bool IsActive { get; private set; }
 
         public SensorLifecycleService(ISensorService sensorService)
-        {
-            this.sensorService = sensorService ?? throw new ArgumentNullException(nameof(sensorService));
-        }
+            => this.sensorService = sensorService ?? throw new ArgumentNullException(nameof(sensorService));
 
         public void Activate()
         {
             if (IsActive) return;
-            sensorService.Start(highRate: false);   // idle rate on startup
+            sensorService.Start();
+            sensorService.SetRate(false);   // idle rate on launch
             IsActive = true;
         }
 
@@ -32,7 +27,6 @@ namespace ParikramaCounter.Services
             IsActive = false;
         }
 
-        // Called by PradhakshinaSessionService when tracking starts/stops.
         public void SetTrackingRate(bool tracking)
         {
             if (!IsActive) return;
