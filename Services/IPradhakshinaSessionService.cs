@@ -30,7 +30,7 @@ namespace ParikramaCounter.Services
 
         // Counting
         void  ProcessSensorData(double heading, int steps, bool isMoving, DateTime timestamp);
-        Task  ManualIncrementAsync(int totalSteps);
+        Task  ManualIncrementAsync();
         void  ManualDecrement();
 
         // Target

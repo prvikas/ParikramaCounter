@@ -117,7 +117,7 @@ namespace ParikramaCounter.ViewModels
 
             StartStopCommand       = new Command(StartStop);
             ResetCommand           = new Command(async () => await ResetAsync());
-            ManualIncrementCommand = new Command(async () => await session.ManualIncrementAsync(steps));
+            ManualIncrementCommand = new Command(async () => await session.ManualIncrementAsync());
             ManualDecrementCommand = new Command(() => session.ManualDecrement());
             // Issue #6: toggle mode via prefs directly, then notify display
             ToggleCountModeCommand = new Command(ToggleCountMode);
@@ -157,14 +157,15 @@ namespace ParikramaCounter.ViewModels
 
         private void OnCountChanged(int _)
         {
-            // Issue #1: no local field to update — just notify all count-derived properties
-            MainThread.BeginInvokeOnMainThread(() =>
-            {
-                OnPropertyChanged(nameof(ParikramaCount));
-                OnPropertyChanged(nameof(RemainingParikramas));
-                OnPropertyChanged(nameof(DisplayCount));
-                UpdateProgress();
-            });
+            // CountChanged fires from session.ProcessSensorData which is already called
+            // inside BeginInvokeOnMainThread in OnSensorDataReceived — we are on the
+            // main thread here. Call OnPropertyChanged directly to avoid a one-frame lag.
+            // (ManualIncrementAsync fires CountChanged from the command handler, which
+            // MAUI Command infrastructure also dispatches on the main thread.)
+            OnPropertyChanged(nameof(ParikramaCount));
+            OnPropertyChanged(nameof(RemainingParikramas));
+            OnPropertyChanged(nameof(DisplayCount));
+            UpdateProgress();
         }
 
         private void OnTargetReachedEvent()
@@ -219,6 +220,14 @@ namespace ParikramaCounter.ViewModels
             OnPropertyChanged(nameof(DisplayCount));
         }
 
+        // Called from TrackingPage.OnAppearing so that a mode change made on the
+        // Settings page is reflected when the user navigates back to Tracking.
+        public void RefreshModeDisplay()
+        {
+            CountModeLabel = prefs.IsDescendingMode ? "Descending" : "Ascending";
+            OnPropertyChanged(nameof(DisplayCount));
+        }
+
         private void RefreshTargetDisplay()
         {
             OnPropertyChanged(nameof(TargetParikrama));
@@ -250,3 +259,5 @@ namespace ParikramaCounter.ViewModels
             => PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(name));
     }
 }
+
+// Note: this 

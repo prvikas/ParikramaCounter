@@ -12,6 +12,7 @@ namespace ParikramaCounter.Platforms.iOS
         private readonly NSOperationQueue operationQueue;
         private bool isRunning;
         private bool disposed;
+        private bool currentHighRate = false;
 
         private readonly object sensorLock = new object();
         private double[] accelValues = new double[3];
@@ -36,13 +37,15 @@ namespace ParikramaCounter.Platforms.iOS
         public void Start(bool highRate = false)
         {
             if (isRunning) return;
+            currentHighRate = highRate;
             StartSensors(highRate);
             isRunning = true;
         }
 
         public void SetRate(bool highRate)
         {
-            if (!isRunning) return;
+            if (!isRunning || currentHighRate == highRate) return;
+            currentHighRate = highRate;
             // CMMotionManager and CMPedometer both require stop+restart to change interval.
             // Calling StartPedometerUpdates on an already-running pedometer throws NSInvalidArgumentException.
             motionManager.StopAccelerometerUpdates();

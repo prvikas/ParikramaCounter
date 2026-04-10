@@ -106,7 +106,7 @@ namespace ParikramaCounter.Services
 
         // ── Manual counting ───────────────────────────────────────────────────────
 
-        public async Task ManualIncrementAsync(int totalSteps)
+        public async Task ManualIncrementAsync()
         {
             int cap = Math.Max(Target * 2, Target + 10);
             if (tracker.ParikramaCount >= cap) return;

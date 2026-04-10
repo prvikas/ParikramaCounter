@@ -12,6 +12,14 @@ namespace ParikramaCounter.Views
             BindingContext = viewModel = vm;
         }
 
+        // Re-read IsDescendingMode from prefs on every appearance so that a mode
+        // change made on the Settings page is reflected immediately when navigating back.
+        protected override void OnAppearing()
+        {
+            base.OnAppearing();
+            viewModel.RefreshModeDisplay();
+        }
+
         // Handle Set button for custom target: apply the value then clear the Entry
         // so the user gets clear feedback that the action was taken.
         private void OnSetCustomTargetClicked(object sender, EventArgs e)
