@@ -24,29 +24,27 @@ namespace ParikramaCounter.Services
             public const string MinStepInterval       = "pref_step_interval";
         }
 
-        // ── In-memory cache for hot-path reads (read on every sensor tick) ────────
+        // Cache initialised in constructor — runs single-threaded at DI build time,
+        // so no race condition. Avoids the double-checked locking problem on plain bool.
         private bool _isDescendingMode;
         private bool _autoCountingEnabled;
-        private bool _cacheLoaded = false;
 
-        private void EnsureCache()
+        public AppPreferences()
         {
-            if (_cacheLoaded) return;
             _isDescendingMode    = Preferences.Get(Keys.IsDescendingMode,    false);
             _autoCountingEnabled = Preferences.Get(Keys.AutoCountingEnabled,  true);
-            _cacheLoaded = true;
         }
 
-        // ── Hot-path properties (cached) ──────────────────────────────────────────
+        // ── Hot-path properties (cached in memory, initialised in constructor) ──────
         public bool IsDescendingMode
         {
-            get { EnsureCache(); return _isDescendingMode; }
+            get => _isDescendingMode;
             set { _isDescendingMode = value; Preferences.Set(Keys.IsDescendingMode, value); }
         }
 
         public bool AutoCountingEnabled
         {
-            get { EnsureCache(); return _autoCountingEnabled; }
+            get => _autoCountingEnabled;
             set { _autoCountingEnabled = value; Preferences.Set(Keys.AutoCountingEnabled, value); }
         }
 

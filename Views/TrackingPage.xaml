@@ -153,7 +153,7 @@
 
             <!-- Controls row -->
             <Grid ColumnDefinitions="*,Auto,Auto" ColumnSpacing="10">
-                <Button Text="{Binding StartStopButtonText}"
+                <Button Text="{Binding StartStopText}"
                         Command="{Binding StartStopCommand}"
                         BackgroundColor="#3b82f6" TextColor="White"
                         HeightRequest="50" CornerRadius="12"

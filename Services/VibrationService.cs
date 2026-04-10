@@ -22,10 +22,14 @@ namespace ParikramaCounter.Services
         public async Task VibrateTargetReachedAsync()
         {
             if (!prefs.EnableVibrations) return;
-            for (int i = 0; i < prefs.TargetVibrationCount; i++)
+            // Capture values before the loop — prefs.TargetVibrationMs goes to
+            // Preferences storage on every read; reading inside the loop is wasteful.
+            int count = prefs.TargetVibrationCount;
+            int ms    = prefs.TargetVibrationMs;
+            for (int i = 0; i < count; i++)
             {
-                Vibrate(prefs.TargetVibrationMs);
-                await Task.Delay(prefs.TargetVibrationMs + 200);
+                Vibrate(ms);
+                await Task.Delay(ms + 200);
             }
         }
 

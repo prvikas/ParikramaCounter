@@ -80,7 +80,9 @@ namespace ParikramaCounter.ViewModels
                 if (value < 0 || value >= PresetTargets.Count) return;
                 selectedPresetIndex = value;
                 OnPropertyChanged();
-                session.SetTarget(PresetTargets[value]);
+                int newTarget = PresetTargets[value];
+                session.SetTarget(newTarget);
+                if (newTarget > session.Count) TargetReached = false;
                 RefreshTargetDisplay();
             }
         }
@@ -188,17 +190,18 @@ namespace ParikramaCounter.ViewModels
             SidesInfo       = $"0/{TotalSides} sides";
             MovementStatus  = "Stationary";
             fusionEngine.Reset();
+            // session.ResetAsync() fires CountChanged(0) which calls OnCountChanged
+            // on the main thread — that notifies ParikramaCount, DisplayCount,
+            // RemainingParikramas, and UpdateProgress. No need to repeat them here.
             await session.ResetAsync();
-            OnPropertyChanged(nameof(ParikramaCount));
-            OnPropertyChanged(nameof(DisplayCount));
-            OnPropertyChanged(nameof(RemainingParikramas));
-            UpdateProgress();
         }
 
         private void SetCustomTarget(string text)
         {
             if (!int.TryParse(text, out int value) || value < 1) return;
             session.SetTarget(value);
+            // Clear completion banner if new target is beyond current count
+            if (value > session.Count) TargetReached = false;
             RefreshTargetDisplay();
             int idx = PresetTargets.IndexOf(value);
             if (idx != selectedPresetIndex)

@@ -43,10 +43,12 @@ namespace ParikramaCounter.Platforms.iOS
         public void SetRate(bool highRate)
         {
             if (!isRunning) return;
-            // CMMotionManager requires stop+restart to change interval
+            // CMMotionManager and CMPedometer both require stop+restart to change interval.
+            // Calling StartPedometerUpdates on an already-running pedometer throws NSInvalidArgumentException.
             motionManager.StopAccelerometerUpdates();
             motionManager.StopGyroUpdates();
             motionManager.StopMagnetometerUpdates();
+            pedometer.StopPedometerUpdates();
             lock (sensorLock) { hasAccel = false; hasMag = false; }
             StartSensors(highRate);
         }

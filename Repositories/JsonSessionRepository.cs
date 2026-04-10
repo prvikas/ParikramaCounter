@@ -69,37 +69,36 @@ namespace ParikramaCounter.Repositories
             await using var fs = new FileStream(FilePath, FileMode.Open, FileAccess.Read, FileShare.Read, 4096, useAsync: true);
             if (fs.Length == 0) return null;
 
-            // Scan backward skipping trailing newlines, then find the previous newline
-            long pos = fs.Length - 1;
-            while (pos >= 0)
+            // Read the whole file tail (last 8KB is more than enough for one JSON line)
+            // then find the last non-empty line entirely in memory.
+            // This avoids synchronous ReadByte() calls on an async FileStream,
+            // which is unreliable on iOS/Android with overlapped I/O.
+            const int tailSize = 8192;
+            long readFrom = Math.Max(0, fs.Length - tailSize);
+            int bufLen    = (int)(fs.Length - readFrom);
+            var buf       = new byte[bufLen];
+
+            fs.Seek(readFrom, SeekOrigin.Begin);
+            int totalRead = 0;
+            while (totalRead < bufLen)
             {
-                fs.Seek(pos, SeekOrigin.Begin);
-                int b = fs.ReadByte();
-                if (b != '\n' && b != '\r') break;
-                pos--;
+                int n = await fs.ReadAsync(buf, totalRead, bufLen - totalRead);
+                if (n == 0) break;
+                totalRead += n;
             }
-            long lineEnd = pos + 1;
 
-            // Now scan back to find the start of this line
-            while (pos >= 0)
+            // Find the last non-empty line in the buffer
+            var text  = Encoding.UTF8.GetString(buf, 0, totalRead);
+            var lines = text.Split('\n');
+
+            for (int i = lines.Length - 1; i >= 0; i--)
             {
-                fs.Seek(pos, SeekOrigin.Begin);
-                int b = fs.ReadByte();
-                if (b == '\n' || b == '\r') { pos++; break; }
-                pos--;
+                var line = lines[i].Trim('\r', ' ');
+                if (string.IsNullOrWhiteSpace(line)) continue;
+                try { return JsonSerializer.Deserialize<SessionRecord>(line); }
+                catch { return null; }
             }
-            if (pos < 0) pos = 0;
-
-            int length = (int)(lineEnd - pos);
-            if (length <= 0) return null;
-
-            var buffer = new byte[length];
-            fs.Seek(pos, SeekOrigin.Begin);
-            int read = await fs.ReadAsync(buffer, 0, length);
-            var json = Encoding.UTF8.GetString(buffer, 0, read).Trim();
-
-            try { return JsonSerializer.Deserialize<SessionRecord>(json); }
-            catch { return null; }
+            return null;
         }
     }
 }
