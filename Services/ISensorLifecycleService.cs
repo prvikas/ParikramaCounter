@@ -2,16 +2,16 @@ using System;
 
 namespace ParikramaCounter.Services
 {
-    // Fix #4 (sensor lifecycle ownership): single declared owner of sensor hardware.
-    // The sensor starts when the app becomes active and stops on dispose.
-    // ViewModels subscribe to ISensorService.SensorDataReceived — they never
-    // call Start()/Stop() directly. TrackingViewModel toggles tracking state
-    // via StartTracking/StopTracking on this service, which gates whether the
-    // ParikramaTracker processes data — the hardware keeps running.
     public interface ISensorLifecycleService : IDisposable
     {
         bool IsActive { get; }
-        void Activate();    // called by App on launch
-        void Deactivate();  // called by App on destroy
+
+        // App lifecycle — called by App.xaml.cs
+        void Activate();
+        void Deactivate();
+
+        // Issue #5 (battery): sensors run at low rate when idle, high rate when
+        // tracking. SensorRate.Idle ≈ 200ms (UI level), SensorRate.Tracking ≈ 20ms (Game level).
+        void SetTrackingRate(bool tracking);
     }
 }

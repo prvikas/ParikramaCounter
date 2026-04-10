@@ -16,13 +16,12 @@ namespace ParikramaCounter.Platforms.Android
         private float[] accelValues = new float[3];
         private float[] gyroValues  = new float[3];
         private float[] magValues   = new float[3];
-        private bool hasAccel = false;
-        private bool hasMag   = false;
+        private bool hasAccel  = false;
+        private bool hasMag    = false;
         private bool isRunning = false;
+        private bool currentHighRate = false;
 
         public int HardwareStepCount { get; private set; }
-
-        // Fix #1: called by SensorFusionEngine via ISensorService — no more #if ANDROID cast
         public void UpdateStepCount(int count) => HardwareStepCount = count;
 
         public event Action<double[], double[], double[]> SensorDataReceived;
@@ -35,13 +34,22 @@ namespace ParikramaCounter.Platforms.Android
             magnetometer  = sensorManager.GetDefaultSensor(SensorType.MagneticField);
         }
 
-        public void Start()
+        public void Start(bool highRate = false)
         {
             if (isRunning) return;
-            isRunning = true;
-            if (accelerometer != null) sensorManager.RegisterListener(this, accelerometer, SensorDelay.Game);
-            if (gyroscope     != null) sensorManager.RegisterListener(this, gyroscope,     SensorDelay.Game);
-            if (magnetometer  != null) sensorManager.RegisterListener(this, magnetometer,  SensorDelay.Game);
+            isRunning       = true;
+            currentHighRate = highRate;
+            var delay = highRate ? SensorDelay.Game : SensorDelay.Ui;
+            Register(delay);
+        }
+
+        public void SetRate(bool highRate)
+        {
+            if (!isRunning || currentHighRate == highRate) return;
+            currentHighRate = highRate;
+            sensorManager.UnregisterListener(this);
+            lock (sensorLock) { hasAccel = false; hasMag = false; }
+            Register(highRate ? SensorDelay.Game : SensorDelay.Ui);
         }
 
         public void Stop()
@@ -50,6 +58,13 @@ namespace ParikramaCounter.Platforms.Android
             isRunning = false;
             sensorManager.UnregisterListener(this);
             lock (sensorLock) { hasAccel = false; hasMag = false; }
+        }
+
+        private void Register(SensorDelay delay)
+        {
+            if (accelerometer != null) sensorManager.RegisterListener(this, accelerometer, delay);
+            if (gyroscope     != null) sensorManager.RegisterListener(this, gyroscope,     delay);
+            if (magnetometer  != null) sensorManager.RegisterListener(this, magnetometer,  delay);
         }
 
         public void OnSensorChanged(SensorEvent e)

@@ -2,10 +2,10 @@ using System;
 
 namespace ParikramaCounter.Services
 {
-    // Fix #4: owns the sensor hardware lifecycle for the entire app.
-    // The sensor starts when the app activates and stops when it deactivates.
-    // ViewModels subscribe to ISensorService.SensorDataReceived for data —
-    // they never call Start/Stop on the hardware directly.
+    // Issue #5: sensors start at low rate (idle) on app launch.
+    // Switches to high rate (game) when tracking starts, back to low when stopped.
+    // This avoids draining battery while the devotee is navigating menus or
+    // before they begin their pradhakshina walk.
     public class SensorLifecycleService : ISensorLifecycleService
     {
         private readonly ISensorService sensorService;
@@ -21,7 +21,7 @@ namespace ParikramaCounter.Services
         public void Activate()
         {
             if (IsActive) return;
-            sensorService.Start();
+            sensorService.Start(highRate: false);   // idle rate on startup
             IsActive = true;
         }
 
@@ -30,6 +30,13 @@ namespace ParikramaCounter.Services
             if (!IsActive) return;
             sensorService.Stop();
             IsActive = false;
+        }
+
+        // Called by PradhakshinaSessionService when tracking starts/stops.
+        public void SetTrackingRate(bool tracking)
+        {
+            if (!IsActive) return;
+            sensorService.SetRate(tracking);
         }
 
         public void Dispose()

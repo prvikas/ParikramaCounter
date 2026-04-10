@@ -5,32 +5,34 @@ using ParikramaCounter.Repositories;
 
 namespace ParikramaCounter.Services
 {
-    // Fix #5 (TrackingViewModel responsibility split):
-    // Owns the active pradhakshina session — count, target, mode, completion detection,
-    // history saving. TrackingViewModel becomes a thin UI adapter over this service.
-    public class PradhakshinaSessionService
+    // Issue #3: implements IPradhakshinaSessionService.
+    // Issue #1 (state sync): this service is the single source of truth for
+    //   count and target. TrackingViewModel holds NO duplicate backing fields for
+    //   these values — it reads them directly from this service via the interface.
+    // Issue #5 (battery): switches sensor to high-rate on StartTracking,
+    //   back to idle rate on StopTracking.
+    public class PradhakshinaSessionService : IPradhakshinaSessionService
     {
-        private readonly IAppPreferences    prefs;
-        private readonly IVibrationService  vibration;
-        private readonly ISessionRepository repository;
-        private readonly ParikramaTracker   tracker = new ParikramaTracker();
+        private readonly IAppPreferences          prefs;
+        private readonly IVibrationService        vibration;
+        private readonly ISessionRepository       repository;
+        private readonly ISensorLifecycleService  lifecycle;
+        private readonly ParikramaTracker         tracker = new ParikramaTracker();
 
         private SessionRecord? activeSession;
         private bool isTracking;
 
         // ── Events ────────────────────────────────────────────────────────────────
+        public event Action<int>? CountChanged;
+        public event Action?      TargetReached;
+        public event Action?      ThirdSideCompleted;
+        public event Action?      ApproachingStart;
 
-        public event Action<int>? CountChanged;           // new count value
-        public event Action?      TargetReached;          // target hit
-        public event Action?      ThirdSideCompleted;     // 3rd side buzz trigger
-        public event Action?      ApproachingStart;       // approaching start trigger
-
-        // ── State ─────────────────────────────────────────────────────────────────
-
-        public int  Count          => tracker.ParikramaCount;
-        public int  Target         => prefs.TargetParikrama;
-        public bool IsTargetReached => tracker.IsTargetReached;
-        public bool IsTracking     => isTracking;
+        // ── State (single source of truth) ────────────────────────────────────────
+        public int    Count           => tracker.ParikramaCount;
+        public int    Target          => prefs.TargetParikrama;
+        public bool   IsTargetReached => tracker.IsTargetReached;
+        public bool   IsTracking      => isTracking;
 
         // Tracker read-through for display
         public double CurrentProgress      => tracker.CurrentProgress;
@@ -39,19 +41,20 @@ namespace ParikramaCounter.Services
         public string GetDirection()       => tracker.GetDirection();
 
         public PradhakshinaSessionService(
-            IAppPreferences    prefs,
-            IVibrationService  vibration,
-            ISessionRepository repository)
+            IAppPreferences         prefs,
+            IVibrationService       vibration,
+            ISessionRepository      repository,
+            ISensorLifecycleService lifecycle)
         {
-            this.prefs      = prefs      ?? throw new ArgumentNullException(nameof(prefs));
-            this.vibration  = vibration  ?? throw new ArgumentNullException(nameof(vibration));
+            this.prefs     = prefs     ?? throw new ArgumentNullException(nameof(prefs));
+            this.vibration = vibration ?? throw new ArgumentNullException(nameof(vibration));
             this.repository = repository ?? throw new ArgumentNullException(nameof(repository));
+            this.lifecycle = lifecycle  ?? throw new ArgumentNullException(nameof(lifecycle));
 
             tracker.TargetParikramaCount  = prefs.TargetParikrama;
             tracker.OnThirdSideCompleted += () => { ThirdSideCompleted?.Invoke(); vibration.VibrateThirdSide(); };
             tracker.OnApproachingStart   += () => { ApproachingStart?.Invoke();   vibration.VibrateApproachingStart(); };
 
-            // Restore persisted count
             tracker.ManualSetCount(prefs.ParikramaCount);
         }
 
@@ -60,7 +63,8 @@ namespace ParikramaCounter.Services
         public void StartTracking()
         {
             if (isTracking) return;
-            isTracking    = true;
+            isTracking = true;
+            lifecycle.SetTrackingRate(true);      // Issue #5: switch to high rate
             activeSession = new SessionRecord
             {
                 Target    = prefs.TargetParikrama,
@@ -72,10 +76,11 @@ namespace ParikramaCounter.Services
         {
             if (!isTracking) return;
             isTracking = false;
+            lifecycle.SetTrackingRate(false);     // Issue #5: back to idle rate
 
             if (activeSession != null)
             {
-                activeSession.CompletedAt   = DateTime.UtcNow;
+                activeSession.CompletedAt    = DateTime.UtcNow;
                 activeSession.CountCompleted = tracker.ParikramaCount;
                 activeSession.TotalSteps     = totalSteps;
                 await repository.SaveAsync(activeSession);
@@ -83,28 +88,20 @@ namespace ParikramaCounter.Services
             }
         }
 
-        // ── Auto-detection via sensor data ────────────────────────────────────────
+        // ── Auto-detection ────────────────────────────────────────────────────────
 
         public void ProcessSensorData(double heading, int steps, bool isMoving, DateTime timestamp)
         {
             if (!isTracking || !prefs.AutoCountingEnabled) return;
 
-            bool completed = tracker.CheckAndUpdateParikrama(heading, steps, isMoving, timestamp);
-            if (!completed) return;
+            if (!tracker.CheckAndUpdateParikrama(heading, steps, isMoving, timestamp)) return;
 
-            int newCount = tracker.ParikramaCount;
+            int newCount         = tracker.ParikramaCount;
             prefs.ParikramaCount = newCount;
             CountChanged?.Invoke(newCount);
 
-            if (tracker.IsTargetReached)
-            {
-                TargetReached?.Invoke();
-                _ = vibration.VibrateTargetReachedAsync();
-            }
-            else
-            {
-                vibration.VibrateCompletion();
-            }
+            if (tracker.IsTargetReached) { TargetReached?.Invoke(); _ = vibration.VibrateTargetReachedAsync(); }
+            else                          vibration.VibrateCompletion();
         }
 
         // ── Manual counting ───────────────────────────────────────────────────────
@@ -118,15 +115,8 @@ namespace ParikramaCounter.Services
             prefs.ParikramaCount = tracker.ParikramaCount;
             CountChanged?.Invoke(tracker.ParikramaCount);
 
-            if (tracker.IsTargetReached)
-            {
-                TargetReached?.Invoke();
-                await vibration.VibrateTargetReachedAsync();
-            }
-            else if (tracker.ParikramaCount > 1)
-            {
-                vibration.VibrateCompletion();
-            }
+            if (tracker.IsTargetReached)      { TargetReached?.Invoke(); await vibration.VibrateTargetReachedAsync(); }
+            else if (tracker.ParikramaCount > 1) vibration.VibrateCompletion();
         }
 
         public void ManualDecrement()
@@ -141,8 +131,8 @@ namespace ParikramaCounter.Services
 
         public void SetTarget(int target)
         {
-            prefs.TargetParikrama            = target;
-            tracker.TargetParikramaCount     = target;
+            prefs.TargetParikrama        = target;
+            tracker.TargetParikramaCount = target;
         }
 
         // ── Reset ─────────────────────────────────────────────────────────────────

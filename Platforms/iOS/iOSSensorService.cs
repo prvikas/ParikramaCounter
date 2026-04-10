@@ -8,23 +8,20 @@ namespace ParikramaCounter.Platforms.iOS
     public class iOSSensorService : ISensorService, IDisposable
     {
         private readonly CMMotionManager motionManager;
-        private readonly CMPedometer pedometer;
+        private readonly CMPedometer     pedometer;
         private readonly NSOperationQueue operationQueue;
         private bool isRunning;
         private bool disposed;
 
         private readonly object sensorLock = new object();
         private double[] accelValues = new double[3];
-        private double[] magValues   = new double[3];
         private double[] gyroValues  = new double[3];
+        private double[] magValues   = new double[3];
         private bool hasAccel = false;
         private bool hasMag   = false;
 
         public int HardwareStepCount { get; private set; }
-
-        // Fix #1: no-op on iOS — CMPedometer updates HardwareStepCount directly.
-        // The interface requires the method; Android uses it, iOS ignores it.
-        public void UpdateStepCount(int count) { }
+        public void UpdateStepCount(int count) { }   // no-op: CMPedometer owns the value
 
         public event Action<double[], double[], double[]> SensorDataReceived;
 
@@ -35,14 +32,33 @@ namespace ParikramaCounter.Platforms.iOS
             operationQueue = new NSOperationQueue { MaxConcurrentOperationCount = 1 };
         }
 
-        public void Start()
+        // Issue #5: highRate=false → 0.2s interval (idle); true → 0.02s (tracking)
+        public void Start(bool highRate = false)
         {
             if (isRunning) return;
+            StartSensors(highRate);
+            isRunning = true;
+        }
+
+        public void SetRate(bool highRate)
+        {
+            if (!isRunning) return;
+            // CMMotionManager requires stop+restart to change interval
+            motionManager.StopAccelerometerUpdates();
+            motionManager.StopGyroUpdates();
+            motionManager.StopMagnetometerUpdates();
+            lock (sensorLock) { hasAccel = false; hasMag = false; }
+            StartSensors(highRate);
+        }
+
+        private void StartSensors(bool highRate)
+        {
+            double interval = highRate ? 0.02 : 0.2;
 
             if (motionManager.AccelerometerAvailable)
             {
-                motionManager.AccelerometerUpdateInterval = 0.02;
-                motionManager.StartAccelerometerUpdates(operationQueue, (data, error) =>
+                motionManager.AccelerometerUpdateInterval = interval;
+                motionManager.StartAccelerometerUpdates(operationQueue, (data, _) =>
                 {
                     if (data == null) return;
                     lock (sensorLock)
@@ -58,8 +74,8 @@ namespace ParikramaCounter.Platforms.iOS
 
             if (motionManager.GyroAvailable)
             {
-                motionManager.GyroUpdateInterval = 0.02;
-                motionManager.StartGyroUpdates(operationQueue, (data, error) =>
+                motionManager.GyroUpdateInterval = interval;
+                motionManager.StartGyroUpdates(operationQueue, (data, _) =>
                 {
                     if (data == null) return;
                     lock (sensorLock)
@@ -73,8 +89,8 @@ namespace ParikramaCounter.Platforms.iOS
 
             if (motionManager.MagnetometerAvailable)
             {
-                motionManager.MagnetometerUpdateInterval = 0.02;
-                motionManager.StartMagnetometerUpdates(operationQueue, (data, error) =>
+                motionManager.MagnetometerUpdateInterval = interval;
+                motionManager.StartMagnetometerUpdates(operationQueue, (data, _) =>
                 {
                     if (data == null) return;
                     lock (sensorLock)
@@ -89,15 +105,10 @@ namespace ParikramaCounter.Platforms.iOS
             }
 
             if (CMPedometer.IsStepCountingAvailable)
-            {
-                pedometer.StartPedometerUpdates(NSDate.Now, (data, error) =>
+                pedometer.StartPedometerUpdates(NSDate.Now, (data, _) =>
                 {
-                    if (data != null)
-                        HardwareStepCount = data.NumberOfSteps.Int32Value;
+                    if (data != null) HardwareStepCount = data.NumberOfSteps.Int32Value;
                 });
-            }
-
-            isRunning = true;
         }
 
         public void Stop()
