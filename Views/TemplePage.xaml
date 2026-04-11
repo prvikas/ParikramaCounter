@@ -8,10 +8,12 @@
     <ScrollView>
         <VerticalStackLayout Padding="20" Spacing="16">
 
-            <Label Text="Temples" FontSize="24" FontAttributes="Bold"
+            <Label Text="Pradhakshina Counter" FontSize="26" FontAttributes="Bold"
                    TextColor="White" HorizontalOptions="Center"/>
+            <Label Text="Temples" FontSize="16" TextColor="#94a3b8"
+                   HorizontalOptions="Center"/>
 
-            <!-- Active temple display -->
+            <!-- Active temple card -->
             <Frame BackgroundColor="#1e293b" BorderColor="#8b5cf6" CornerRadius="15" Padding="16">
                 <VerticalStackLayout Spacing="8">
                     <Label Text="Active temple" FontSize="13" TextColor="#94a3b8"/>
@@ -28,14 +30,18 @@
             <!-- Add new temple -->
             <Frame BackgroundColor="#1e293b" BorderColor="#10b981" CornerRadius="15" Padding="16">
                 <VerticalStackLayout Spacing="10">
-                    <Label Text="Add temple" FontSize="16" FontAttributes="Bold" TextColor="#10b981"/>
-                    <Entry Placeholder="Temple name" PlaceholderColor="#64748b"
-                           TextColor="White" BackgroundColor="#0f172a"
+                    <Label Text="Add temple" FontSize="16" FontAttributes="Bold"
+                           TextColor="#10b981"/>
+                    <Entry Placeholder="Temple name (required)"
+                           PlaceholderColor="#64748b" TextColor="White"
+                           BackgroundColor="#0f172a"
                            Text="{Binding NewTempleName}"/>
-                    <Entry Placeholder="Location (city / district)" PlaceholderColor="#64748b"
-                           TextColor="White" BackgroundColor="#0f172a"
+                    <Entry Placeholder="Location — city / district"
+                           PlaceholderColor="#64748b" TextColor="White"
+                           BackgroundColor="#0f172a"
                            Text="{Binding NewTempleLocation}"/>
-                    <Button Text="Add" Command="{Binding AddTempleCommand}"
+                    <Button Text="Add temple"
+                            Command="{Binding AddTempleCommand}"
                             BackgroundColor="#10b981" TextColor="White"
                             HeightRequest="44" CornerRadius="10" FontSize="15"/>
                 </VerticalStackLayout>
@@ -44,70 +50,72 @@
             <!-- Temple list -->
             <Frame BackgroundColor="#1e293b" BorderColor="#334155" CornerRadius="15" Padding="16">
                 <VerticalStackLayout Spacing="12">
-                    <Label Text="Your temples" FontSize="16" FontAttributes="Bold" TextColor="#94a3b8"/>
+                    <Label Text="Select a temple to activate it" FontSize="16"
+                           FontAttributes="Bold" TextColor="#94a3b8"/>
 
                     <ActivityIndicator IsRunning="{Binding IsLoading}"
                                        IsVisible="{Binding IsLoading}"
                                        Color="#8b5cf6"/>
 
+                    <!-- TwoWay binding pushes tap selection back into SelectedTemple setter -->
                     <CollectionView ItemsSource="{Binding Temples}"
                                     SelectionMode="Single"
-                                    SelectedItem="{Binding SelectedTemple}">
+                                    SelectedItem="{Binding SelectedTemple, Mode=TwoWay}">
                         <CollectionView.ItemTemplate>
                             <DataTemplate>
-                                <Grid ColumnDefinitions="*,Auto" Padding="0,8">
-                                    <VerticalStackLayout Grid.Column="0">
-                                        <Label Text="{Binding Name}" FontSize="15"
-                                               TextColor="White" FontAttributes="Bold"/>
-                                        <Label Text="{Binding Location}" FontSize="12"
-                                               TextColor="#64748b"/>
-                                    </VerticalStackLayout>
-                                    <Button Text="✕"
-                                            Command="{Binding Source={RelativeSource AncestorType={x:Type ContentPage}}, Path=BindingContext.DeleteTempleCommand}"
-                                            CommandParameter="{Binding .}"
-                                            BackgroundColor="Transparent" TextColor="#ef4444"
-                                            WidthRequest="40" HeightRequest="40"
-                                            Grid.Column="1"/>
-                                </Grid>
+                                <Frame BackgroundColor="#0f172a" BorderColor="#334155"
+                                       CornerRadius="10" Padding="12" Margin="0,4">
+                                    <Grid ColumnDefinitions="*,Auto">
+                                        <VerticalStackLayout Grid.Column="0" Spacing="2">
+                                            <Label Text="{Binding Name}" FontSize="15"
+                                                   TextColor="White" FontAttributes="Bold"/>
+                                            <Label Text="{Binding Location}" FontSize="12"
+                                                   TextColor="#64748b"/>
+                                        </VerticalStackLayout>
+                                        <Button Text="✕"
+                                                Command="{Binding Source={RelativeSource AncestorType={x:Type ContentPage}}, Path=BindingContext.DeleteTempleCommand}"
+                                                CommandParameter="{Binding .}"
+                                                BackgroundColor="Transparent" TextColor="#ef4444"
+                                                WidthRequest="36" HeightRequest="36"
+                                                Grid.Column="1" VerticalOptions="Center"/>
+                                    </Grid>
+                                </Frame>
                             </DataTemplate>
                         </CollectionView.ItemTemplate>
                     </CollectionView>
-
-                    <Label Text="No temples yet. Add one above."
-                           FontSize="13" TextColor="#64748b" HorizontalOptions="Center"
-                           IsVisible="{Binding Temples.Count, Converter={StaticResource IntToBoolConverter}, ConverterParameter=0}"/>
                 </VerticalStackLayout>
             </Frame>
 
-            <!-- Heading distribution for selected temple -->
+            <!-- Heading distribution — only shown when a temple is selected and has data -->
             <Frame BackgroundColor="#1e293b" BorderColor="#3b82f6" CornerRadius="15" Padding="16"
                    IsVisible="{Binding HasActiveTemple}">
                 <VerticalStackLayout Spacing="10">
-                    <Label Text="Heading distribution" FontSize="16" FontAttributes="Bold" TextColor="#3b82f6"/>
-                    <Label Text="Compass bearings observed at this temple across all sessions."
+                    <Label Text="Compass heading distribution" FontSize="16"
+                           FontAttributes="Bold" TextColor="#3b82f6"/>
+                    <Label Text="Bearings observed across all sessions at this temple."
                            FontSize="12" TextColor="#64748b"/>
 
                     <CollectionView ItemsSource="{Binding HeadingRows}">
                         <CollectionView.ItemTemplate>
                             <DataTemplate>
-                                <Grid ColumnDefinitions="80,*,40" ColumnSpacing="8" Padding="0,4">
+                                <Grid ColumnDefinitions="90,*,50" ColumnSpacing="8" Padding="0,3">
                                     <Label Text="{Binding BearingLabel}" FontSize="12"
-                                           TextColor="#94a3b8" Grid.Column="0" VerticalOptions="Center"/>
+                                           TextColor="#94a3b8" Grid.Column="0"
+                                           VerticalOptions="Center"/>
                                     <ProgressBar Progress="{Binding Bar}"
-                                                 ProgressColor="#3b82f6"
-                                                 HeightRequest="8"
+                                                 ProgressColor="#3b82f6" HeightRequest="8"
                                                  Grid.Column="1" VerticalOptions="Center"/>
                                     <Label Text="{Binding Count}" FontSize="12"
-                                           TextColor="#3b82f6" Grid.Column="2" VerticalOptions="Center"
-                                           HorizontalOptions="End"/>
+                                           TextColor="#3b82f6" HorizontalOptions="End"
+                                           Grid.Column="2" VerticalOptions="Center"/>
                                 </Grid>
                             </DataTemplate>
                         </CollectionView.ItemTemplate>
                     </CollectionView>
 
-                    <Label Text="No heading data yet. Complete some sessions at this temple."
+                    <Label Text="No data yet — complete sessions at this temple."
                            FontSize="12" TextColor="#64748b" HorizontalOptions="Center"
-                           IsVisible="{Binding HeadingRows.Count, Converter={StaticResource IntToBoolConverter}, ConverterParameter=0}"/>
+                           IsVisible="{Binding HasNoHeadingData}"/>
                 </VerticalStackLayout>
             </Frame>
 

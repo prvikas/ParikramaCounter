@@ -53,6 +53,11 @@ namespace ParikramaCounter.ViewModels
             ? $"{Math.Max(0, session.Target - session.Count)}"
             : $"{session.Count}";
 
+        // Shows the active temple name in the Tracking header; refreshed on OnAppearing
+        public string ActiveTempleDisplay => string.IsNullOrEmpty(session.ActiveTempleName)
+            ? "No temple selected — tap Temples tab to choose"
+            : $"🛕  {session.ActiveTempleName}";
+
         public bool   IsTracking        { get => isTracking;         private set { isTracking = value;         StartStopText = value ? "Stop" : "Start"; OnPropertyChanged(); } }
         public string StartStopText     { get => startStopText;      private set { startStopText = value;      OnPropertyChanged(); } }
         public string Heading           { get => heading;             private set { heading = value;             OnPropertyChanged(); } }
@@ -216,6 +221,7 @@ namespace ParikramaCounter.ViewModels
         {
             CountModeLabel = userPrefs.IsDescendingMode ? "Descending" : "Ascending";
             OnPropertyChanged(nameof(DisplayCount));
+            OnPropertyChanged(nameof(ActiveTempleDisplay));
         }
 
         private void RefreshTargetDisplay()

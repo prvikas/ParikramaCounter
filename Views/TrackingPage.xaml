@@ -11,6 +11,13 @@
             <Label Text="Pradhakshina Counter" FontSize="26" FontAttributes="Bold"
                    TextColor="White" HorizontalOptions="Center"/>
 
+
+            <!-- Active temple indicator -->
+            <Frame BackgroundColor="#1e293b" BorderColor="#334155" CornerRadius="10" Padding="10">
+                <Label Text="{Binding ActiveTempleDisplay}"
+                       FontSize="13" TextColor="#94a3b8" HorizontalOptions="Center"/>
+            </Frame>
+
             <!-- Main counter display -->
             <Frame BackgroundColor="#1e293b" BorderColor="#8b5cf6" CornerRadius="20" Padding="24">
                 <VerticalStackLayout Spacing="8">
