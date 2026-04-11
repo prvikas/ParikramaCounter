@@ -11,9 +11,8 @@
                 <ResourceDictionary Source="Resources/Styles/Styles.xaml" />
             </ResourceDictionary.MergedDictionaries>
 
-            <!-- Fix #18: register InverseBoolConverter globally so all pages can
-                 use {StaticResource InverseBoolConverter} without crashing. -->
             <converters:InverseBoolConverter x:Key="InverseBoolConverter" />
+            <converters:IntToBoolConverter   x:Key="IntToBoolConverter"   />
         </ResourceDictionary>
     </Application.Resources>
 </Application>

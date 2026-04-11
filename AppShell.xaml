@@ -5,11 +5,13 @@
        Shell.FlyoutBehavior="Disabled">
 
     <TabBar>
-        <!-- Fix #21: icon files now exist in Resources/Images as SVGs.
-             MAUI compiles SVGs to platform-native image assets at build time. -->
         <ShellContent Title="Tracking"
                       Icon="home.svg"
                       ContentTemplate="{DataTemplate local:TrackingPage}" />
+
+        <ShellContent Title="Temples"
+                      Icon="chart.svg"
+                      ContentTemplate="{DataTemplate local:TemplePage}" />
 
         <ShellContent Title="Diagnostics"
                       Icon="chart.svg"

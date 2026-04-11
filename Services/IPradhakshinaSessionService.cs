@@ -14,7 +14,11 @@ namespace ParikramaCounter.Services
         int    CurrentStepsInCircle { get; }
         string GetDirection();
 
-        // Domain events — fired on calling thread, consumers marshal to main thread
+        // Active temple context — set by temple selection UI before starting a session
+        string? ActiveTempleId   { get; }
+        string? ActiveTempleName { get; }
+        void    SetActiveTemple(string? id, string? name);
+
         event Action<int>? CountChanged;
         event Action?      TargetReached;
         event Action?      ThirdSideCompleted;

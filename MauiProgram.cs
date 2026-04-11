@@ -25,11 +25,10 @@ namespace ParikramaCounter
                 });
 
 #if DEBUG
-            builder.Logging.AddDebug();  // Fix #10: structured logging wired up
+            builder.Logging.AddDebug();
 #endif
 
             // ── Platform sensor service ───────────────────────────────────────────
-            // Fix #9: simulator detection for testing without a physical device
 #if ANDROID
             if (Microsoft.Maui.Devices.DeviceInfo.DeviceType == Microsoft.Maui.Devices.DeviceType.Virtual)
                 builder.Services.AddSingleton<ISensorService, MockSensorService>();
@@ -48,11 +47,11 @@ namespace ParikramaCounter
             builder.Services.AddSingleton<ISensorFusionEngine, SensorFusionEngine>();
             builder.Services.AddSingleton<ISensorLifecycleService, SensorLifecycleService>();
 
-            // ── Fix #3: split preferences registered as all three interfaces ──────
+            // ── Preferences — one instance, three interfaces ──────────────────────
             builder.Services.AddSingleton<AppPreferences>();
-            builder.Services.AddSingleton<IAppPreferences>(sp => sp.GetRequiredService<AppPreferences>());
-            builder.Services.AddSingleton<ISessionState>(sp => sp.GetRequiredService<AppPreferences>());
-            builder.Services.AddSingleton<IUserPreferences>(sp => sp.GetRequiredService<AppPreferences>());
+            builder.Services.AddSingleton<IAppPreferences>(sp    => sp.GetRequiredService<AppPreferences>());
+            builder.Services.AddSingleton<ISessionState>(sp      => sp.GetRequiredService<AppPreferences>());
+            builder.Services.AddSingleton<IUserPreferences>(sp   => sp.GetRequiredService<AppPreferences>());
             builder.Services.AddSingleton<ISensorConfiguration>(sp => sp.GetRequiredService<AppPreferences>());
 
             // ── Repositories ──────────────────────────────────────────────────────
@@ -60,26 +59,24 @@ namespace ParikramaCounter
             builder.Services.AddSingleton<ITempleRepository, JsonTempleRepository>();
 
             // ── Domain services ───────────────────────────────────────────────────
-            // Fix #4: VibrationService is IDisposable — registered as singleton so
-            // it can subscribe to session events once and live for app lifetime.
-            builder.Services.AddSingleton<IVibrationService, VibrationService>();
-
-            // Session service — single source of truth for count and target
             builder.Services.AddSingleton<IPradhakshinaSessionService, PradhakshinaSessionService>();
-
-            // Fix #5: SensorPipeline owns the sensor→fusion→session loop
             builder.Services.AddSingleton<ISensorPipeline, SensorPipeline>();
 
+            // VibrationService subscribes to session events in its constructor;
+            // resolve eagerly in App.xaml.cs so subscriptions exist before tracking.
+            builder.Services.AddSingleton<IVibrationService, VibrationService>();
+
             // ── ViewModels ────────────────────────────────────────────────────────
-            // Fix #10: ILogger automatically resolved by the DI container
-            builder.Services.AddSingleton<SettingsViewModel>();
             builder.Services.AddSingleton<TrackingViewModel>();
             builder.Services.AddSingleton<DiagnosticsViewModel>();
+            builder.Services.AddSingleton<SettingsViewModel>();
+            builder.Services.AddSingleton<TempleViewModel>();
 
             // ── Pages ─────────────────────────────────────────────────────────────
             builder.Services.AddTransient<Views.TrackingPage>();
             builder.Services.AddTransient<Views.DiagnosticsPage>();
             builder.Services.AddTransient<Views.SettingsPage>();
+            builder.Services.AddTransient<Views.TemplePage>();
 
             return builder.Build();
         }

@@ -6,12 +6,6 @@ using ParikramaCounter.Repositories;
 
 namespace ParikramaCounter.Services
 {
-    // Fix #4: service fires domain events only — does NOT call IVibrationService directly.
-    // VibrationService subscribes to the events externally in MauiProgram.
-    // This means adding a new side effect (sound, notification) doesn't touch this class.
-    //
-    // Fix: uses Session domain object internally — rich per-pradhakshina data
-    // including start heading, cumulative degrees, and steps per circuit.
     public class PradhakshinaSessionService : IPradhakshinaSessionService
     {
         private readonly ISessionState          sessionState;
@@ -23,16 +17,29 @@ namespace ParikramaCounter.Services
 
         private Session?  activeSession;
         private bool      isTracking;
-        private DateTime  circleStartTime = DateTime.UtcNow;
+        private DateTime  circleStartTime    = DateTime.UtcNow;
         private double    circleStartHeading = 0;
 
-        // ── Domain events (not UI events — consumers decide what to do) ───────────
-        public event Action<int>?    CountChanged;
-        public event Action?         TargetReached;
-        public event Action?         ThirdSideCompleted;
-        public event Action?         ApproachingStart;
+        // Active temple — set by UI via SetActiveTemple(); cached so StartTracking()
+        // can access the name synchronously without an async repository call.
+        private string? _activeTempleId;
+        private string? _activeTempleName;
 
-        // ── State ─────────────────────────────────────────────────────────────────
+        public string? ActiveTempleId   => _activeTempleId;
+        public string? ActiveTempleName => _activeTempleName;
+
+        public void SetActiveTemple(string? id, string? name)
+        {
+            _activeTempleId   = id;
+            _activeTempleName = name;
+            sessionState.ActiveTempleId = id;
+        }
+
+        public event Action<int>? CountChanged;
+        public event Action?      TargetReached;
+        public event Action?      ThirdSideCompleted;
+        public event Action?      ApproachingStart;
+
         public int    Count           => tracker.ParikramaCount;
         public int    Target          => sessionState.TargetParikrama;
         public bool   IsTargetReached => tracker.IsTargetReached;
@@ -55,13 +62,13 @@ namespace ParikramaCounter.Services
             this.templeRepo   = templeRepo   ?? throw new ArgumentNullException(nameof(templeRepo));
             this.lifecycle    = lifecycle    ?? throw new ArgumentNullException(nameof(lifecycle));
 
-            tracker.TargetParikramaCount  = sessionState.TargetParikrama;
-
-            // Fix #4: tracker events become service events — no vibration here
+            tracker.TargetParikramaCount = sessionState.TargetParikrama;
             tracker.OnThirdSideCompleted += () => ThirdSideCompleted?.Invoke();
             tracker.OnApproachingStart   += () => ApproachingStart?.Invoke();
-
             tracker.ManualSetCount(sessionState.ParikramaCount);
+
+            // Restore active temple id from persisted prefs (name cached on next SetActiveTemple call)
+            _activeTempleId = sessionState.ActiveTempleId;
         }
 
         public void StartTracking()
@@ -70,15 +77,12 @@ namespace ParikramaCounter.Services
             isTracking = true;
             lifecycle.SetTrackingRate(true);
 
-            string? templeId   = sessionState.ActiveTempleId;
-            string? templeName = null;
-
             activeSession = new Session
             {
                 Target     = sessionState.TargetParikrama,
                 StartedAt  = DateTime.UtcNow,
-                TempleId   = templeId,
-                TempleName = templeName
+                TempleId   = _activeTempleId,
+                TempleName = _activeTempleName   // populated by SetActiveTemple
             };
             circleStartTime    = DateTime.UtcNow;
             circleStartHeading = 0;
@@ -93,10 +97,8 @@ namespace ParikramaCounter.Services
             if (activeSession != null)
             {
                 activeSession.Complete(totalSteps);
-                var record = SessionRecord.FromSession(activeSession);
-                await repository.SaveAsync(record);
+                await repository.SaveAsync(Models.SessionRecord.FromSession(activeSession));
 
-                // Update temple heading data if a temple is selected
                 if (!string.IsNullOrEmpty(activeSession.TempleId))
                     await UpdateTempleHeadingDataAsync(activeSession);
 
@@ -110,23 +112,21 @@ namespace ParikramaCounter.Services
 
             try
             {
-                // Track start heading for the current circle
                 if (tracker.SidesCompleted == 0 && tracker.CurrentProgress < 1.0)
                     circleStartHeading = heading;
 
                 if (!tracker.CheckAndUpdateParikrama(heading, steps, isMoving, timestamp)) return;
 
-                // Record the completed pradhakshina with full heading data
                 if (activeSession != null)
                 {
                     var duration = DateTime.UtcNow - circleStartTime;
                     activeSession.RecordPradhakshina(
-                        startHeading:  circleStartHeading,
-                        peakHeading:   heading,
-                        cumulativeDeg: tracker.CurrentProgress * 3.6,  // 0–100% → 0–360°
-                        stepsWalked:   tracker.CurrentStepsInCircle,
+                        startHeading:   circleStartHeading,
+                        peakHeading:    heading,
+                        cumulativeDeg:  tracker.CurrentProgress * 3.6,
+                        stepsWalked:    tracker.CurrentStepsInCircle,
                         isAutoDetected: true,
-                        duration:      duration);
+                        duration:       duration);
                     circleStartTime    = DateTime.UtcNow;
                     circleStartHeading = heading;
                 }
@@ -135,12 +135,10 @@ namespace ParikramaCounter.Services
                 sessionState.ParikramaCount = newCount;
                 CountChanged?.Invoke(newCount);
 
-                // Fix #4: fire domain event — let subscribers decide on vibration/sound/UI
                 if (tracker.IsTargetReached) TargetReached?.Invoke();
             }
             catch (Exception ex)
             {
-                // Fix #7: error boundary — sensor anomalies should not break counting
                 Debug.WriteLine($"[SessionService] ProcessSensorData error: {ex.Message}");
             }
         }
@@ -170,8 +168,8 @@ namespace ParikramaCounter.Services
 
         public void SetTarget(int target)
         {
-            sessionState.TargetParikrama        = target;
-            tracker.TargetParikramaCount         = target;
+            sessionState.TargetParikrama    = target;
+            tracker.TargetParikramaCount    = target;
         }
 
         public async Task ResetAsync()

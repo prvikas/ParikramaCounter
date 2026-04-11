@@ -1,17 +1,18 @@
 using System;
 using System.ComponentModel;
+using System.Diagnostics;
 using System.Runtime.CompilerServices;
 using Microsoft.Maui.Controls;
 using ParikramaCounter.Services;
 
 namespace ParikramaCounter.ViewModels
 {
-    // Fix #6: no longer depends on TrackingViewModel.
-    // Heading and steps come from ISensorFusionEngine directly —
-    // the same data source TrackingViewModel uses, without the coupling.
+    // Fix #6: observes ISensorPipeline.SensorProcessed — receives already-processed
+    // SensorData instead of subscribing to raw ISensorService.SensorDataReceived and
+    // calling fusionEngine.ProcessSensorData a second time per tick.
     public class DiagnosticsViewModel : INotifyPropertyChanged, IDisposable
     {
-        private readonly ISensorService      sensorService;
+        private readonly ISensorPipeline     pipeline;
         private readonly ISensorFusionEngine fusionEngine;
         private bool active;
         private bool disposed;
@@ -24,6 +25,7 @@ namespace ParikramaCounter.ViewModels
         private string timestamp        = DateTime.Now.ToString("HH:mm:ss.fff");
         private string heading          = "0.0°";
         private string steps            = "0";
+        private string isMoving         = "Stationary";
 
         public string AccelX           { get => accelX;           set { accelX = value;           OnPropertyChanged(); } }
         public string AccelY           { get => accelY;           set { accelY = value;           OnPropertyChanged(); } }
@@ -40,48 +42,62 @@ namespace ParikramaCounter.ViewModels
         public string Heading          { get => heading;          set { heading = value;          OnPropertyChanged(); } }
         public string TrueHeading      => Heading;
         public string Steps            { get => steps;            set { steps = value;            OnPropertyChanged(); } }
+        public string IsMovingStatus   { get => isMoving;         set { isMoving = value;         OnPropertyChanged(); } }
 
-        public DiagnosticsViewModel(ISensorService sensorService, ISensorFusionEngine fusionEngine)
+        public DiagnosticsViewModel(ISensorPipeline pipeline, ISensorFusionEngine fusionEngine)
         {
-            this.sensorService = sensorService ?? throw new ArgumentNullException(nameof(sensorService));
-            this.fusionEngine  = fusionEngine  ?? throw new ArgumentNullException(nameof(fusionEngine));
+            this.pipeline    = pipeline    ?? throw new ArgumentNullException(nameof(pipeline));
+            this.fusionEngine = fusionEngine ?? throw new ArgumentNullException(nameof(fusionEngine));
         }
 
+        // Called from DiagnosticsPage.OnAppearing
         public void Activate()
         {
             if (active) return;
             active = true;
-            sensorService.SensorDataReceived += OnSensorDataReceived;
+            pipeline.SensorProcessed += OnSensorProcessed;
         }
 
+        // Called from DiagnosticsPage.OnDisappearing
         public void Deactivate()
         {
             if (!active) return;
             active = false;
-            sensorService.SensorDataReceived -= OnSensorDataReceived;
+            pipeline.SensorProcessed -= OnSensorProcessed;
         }
 
-        private void OnSensorDataReceived(double[] accel, double[] gyro, double[] mag)
+        private void OnSensorProcessed(Models.SensorData data)
         {
-            // Fix #7: error boundary — diagnostics page should never crash the app
             try
             {
-                var data       = fusionEngine.ProcessSensorData(accel, gyro, mag);
-                double totalMag = Math.Sqrt(accel[0]*accel[0] + accel[1]*accel[1] + accel[2]*accel[2]);
+                double totalAccelMag = Math.Sqrt(
+                    data.AccelX * data.AccelX +
+                    data.AccelY * data.AccelY +
+                    data.AccelZ * data.AccelZ);
 
                 MainThread.BeginInvokeOnMainThread(() =>
                 {
-                    AccelX = accel[0].ToString("F3"); AccelY = accel[1].ToString("F3"); AccelZ = accel[2].ToString("F3");
-                    GyroX  = gyro[0].ToString("F3");  GyroY  = gyro[1].ToString("F3");  GyroZ  = gyro[2].ToString("F3");
-                    MagX   = mag[0].ToString("F3");   MagY   = mag[1].ToString("F3");   MagZ   = mag[2].ToString("F3");
-                    AccelMagnitude = totalMag.ToString("F3");
+                    AccelX = data.AccelX.ToString("F3");
+                    AccelY = data.AccelY.ToString("F3");
+                    AccelZ = data.AccelZ.ToString("F3");
+                    GyroX  = data.GyroX.ToString("F3");
+                    GyroY  = data.GyroY.ToString("F3");
+                    GyroZ  = data.GyroZ.ToString("F3");
+                    MagX   = data.MagX.ToString("F3");
+                    MagY   = data.MagY.ToString("F3");
+                    MagZ   = data.MagZ.ToString("F3");
+                    AccelMagnitude = totalAccelMag.ToString("F3");
                     Heading        = $"{data.Heading:F1}°";
                     Steps          = data.Steps.ToString();
+                    IsMovingStatus = fusionEngine.IsMoving ? "🚶 Walking" : "🛑 Stationary";
                     Timestamp      = DateTime.Now.ToString("HH:mm:ss.fff");
                     OnPropertyChanged(nameof(TrueHeading));
                 });
             }
-            catch { /* diagnostics page failure must never propagate */ }
+            catch (Exception ex)
+            {
+                Debug.WriteLine($"[DiagnosticsViewModel] Display error: {ex.Message}");
+            }
         }
 
         public void Dispose()

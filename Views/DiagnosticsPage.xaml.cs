@@ -12,8 +12,7 @@ namespace ParikramaCounter.Views
             BindingContext = viewModel = vm;
         }
 
-        // Fix #9: subscribe only while this tab is visible
-        protected override void OnAppearing()  { base.OnAppearing();  viewModel.Activate(); }
+        protected override void OnAppearing()   { base.OnAppearing();    viewModel.Activate(); }
         protected override void OnDisappearing(){ base.OnDisappearing(); viewModel.Deactivate(); }
     }
 }
